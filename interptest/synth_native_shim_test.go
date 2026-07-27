@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -479,5 +480,35 @@ func main() {
 	}
 	if got, want := stdout.String(), "true true\nfalse false\n"; got != want {
 		t.Errorf("stdout = %q, want %q\nstderr: %s", got, want, stderr.String())
+	}
+}
+
+// Host dispatch of an interpreted method while no Run is active: the pooled
+// runner must snapshot the full code, else the method PC is out of range.
+// The REPL panic on `u := uuid.New()` then formatting u.
+func TestSynthMethodHostDispatchWhenIdle(t *testing.T) {
+	if runtime.GOARCH == "wasm" {
+		t.Skip("wasm leaves every method PC at the unreachable sentinel (stubs.FillMethods)")
+	}
+	const src = "type tag int\n" +
+		"func (t tag) String() string { return \"tag!\" }\n" +
+		"tag(3)\n"
+	i := interp.NewInterpreter(golang.GoSpec)
+	i.ImportPackageValues(stdlib.Values)
+	r, err := i.Eval("idle_dispatch_test.go", src)
+	if err != nil {
+		t.Fatalf("Eval: %v", err)
+	}
+	// As the REPL's fmt.Println(res) does.
+	if got := fmt.Sprintf("%v", r); got != "tag!" {
+		t.Errorf("host fmt = %q, want %q", got, "tag!")
+	}
+	// The other host entry into the bridge.
+	m := r.MethodByName("String")
+	if !m.IsValid() {
+		t.Fatal("String method not found on returned value")
+	}
+	if got := m.Call(nil)[0].Interface(); got != "tag!" {
+		t.Errorf("String() via reflect = %q, want %q", got, "tag!")
 	}
 }

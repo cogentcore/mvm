@@ -416,7 +416,8 @@ type Machine struct {
 	panicReraised bool        // panicInfo was adopted from a re-entrant run via invokeNative
 	goexiting     bool        // true while unwinding due to runtime.Goexit (recover sees no panic)
 
-	baseCodeLen int // len(code) before Run() appends sentinel instructions
+	baseCodeLen int  // len(code) before Run() appends sentinel instructions
+	running     bool // a Run is active; re-entrant runs keep it set
 
 	trampBase       int           // marks code as a shared pooledCode slice
 	pooledCode      []Instruction // cached shared runner code (built by ensurePooledCode)
@@ -1018,6 +1019,8 @@ func (m *Machine) Run() (err error) {
 	// A pooledCode machine (trampBase != 0) has the sentinels baked in at
 	// trampBase and must not append: its code is shared read-only.
 	savedBaseCodeLen := m.baseCodeLen
+	wasRunning := m.running
+	m.running = true
 	sentBase := m.trampBase
 	sentAppended := false
 	if sentBase == 0 {
@@ -1040,6 +1043,7 @@ func (m *Machine) Run() (err error) {
 			m.code = m.code[:sentBase]
 		}
 		m.baseCodeLen = savedBaseCodeLen
+		m.running = wasRunning
 	}()
 
 	// Re-enter the dispatch loop each time it converts a catchable runtime
@@ -4773,10 +4777,15 @@ const trampMaxArgs, trampMaxRets = 16, 16
 // Runners and goroutine machines share it read-only, so pooled re-entry never appends.
 // Rebuilt when baseCodeLen changes (new Eval, TrimCode).
 func (m *Machine) ensurePooledCode() {
-	if m.pooledCode != nil && m.pooledCodeBase == m.baseCodeLen && m.pooledCodeEpoch == m.codeEpoch {
+	// Idle, baseCodeLen is stale (Run restores it to a pre-Eval value), so code
+	// compiled since lives past it; running, it is the sentinel boundary.
+	base := m.baseCodeLen
+	if !m.running {
+		base = len(m.code)
+	}
+	if m.pooledCode != nil && m.pooledCodeBase == base && m.pooledCodeEpoch == m.codeEpoch {
 		return
 	}
-	base := m.baseCodeLen
 	code := make([]Instruction, base, base+3+(trampMaxArgs+1)*(trampMaxRets+1)*2)
 	copy(code, m.code[:base])
 	code = append(code, Instruction{Op: DeferRet}, Instruction{Op: PanicUnwind}, Instruction{Op: Exit})
