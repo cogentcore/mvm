@@ -338,7 +338,6 @@ func (f *FS) readDirsLatest(modPath string) (string, bool) {
 	}
 	best := ""
 	for _, root := range f.readDirs {
-		//nolint:gosec // G703: root derives from the user's own GOMODCACHE/GOPATH
 		entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(escMod), "@v"))
 		if err != nil {
 			continue
