@@ -536,6 +536,43 @@ func (p *Parser) instantiate(tmpl *genericTemplate, typeArgs []*mtype.Type, pos 
 	return out, mname, nil
 }
 
+// setGenericSym registers a generic template at key.
+// A compiled-unit template shadowing a predeclared builtin (btree's min[T]/max[T]) sits at a bare key, so evicting the universe entry would break every other package's builtin calls.
+// Park it aside instead, where unitGeneric finds it for the unit's own code.
+// Builtins only ever live at bare keys, so the parked key is always the plain name unitGeneric looks up.
+func (p *Parser) setGenericSym(key string, sym *symbol.Symbol) {
+	if prev, ok := p.Symbols[key]; ok && prev.Kind == symbol.Builtin {
+		if p.unitGenerics == nil {
+			p.unitGenerics = map[string]*symbol.Symbol{}
+		}
+		p.unitGenerics[key] = sym
+		return
+	}
+	p.SymSet(key, sym)
+}
+
+// unitGeneric returns the parked template shadowing predeclared name, if the
+// compiled unit itself (not an imported package) is being parsed.
+func (p *Parser) unitGeneric(name string) *symbol.Symbol {
+	if p.CompilingPkg != "" || p.importingPkg != "" {
+		return nil
+	}
+	return p.unitGenerics[name]
+}
+
+// genericSym resolves an unqualified name to its generic template.
+func (p *Parser) genericSym(name string) (*symbol.Symbol, *genericTemplate, bool) {
+	s, _, ok := p.symGet(name)
+	if !ok || s.Kind != symbol.Generic {
+		return nil, nil, false
+	}
+	tmpl, ok := s.Data.(*genericTemplate)
+	if !ok {
+		return nil, nil, false
+	}
+	return s, tmpl, true
+}
+
 func (p *Parser) instanceName(tmpl *genericTemplate, typeArgs []*mtype.Type) (name string, reuse bool) {
 	base := mangledName(tmpl.name, typeArgs)
 	if !tmpl.isFunc {
@@ -552,6 +589,7 @@ func (p *Parser) instanceName(tmpl *genericTemplate, typeArgs []*mtype.Type) (na
 		return base, false
 	}
 	name = base
+	owner := tmpl.pkgPath + "." + tmpl.name
 	for suffix := 0; ; suffix++ {
 		if suffix > 0 {
 			name = base + "$" + strconv.Itoa(suffix)
@@ -565,12 +603,21 @@ func (p *Parser) instanceName(tmpl *genericTemplate, typeArgs []*mtype.Type) (na
 		if prev, recorded := p.funcInstArgs[name]; recorded && !identicalTypeArgs(prev, typeArgs) {
 			continue // same name, different type set
 		}
+		// Mangled names are unqualified, so two packages' same-named generics
+		// (cmp.Less[int] and btree.Less[int]) both land on "Less#int".
+		if prev, recorded := p.funcInstOwner[name]; recorded && prev != owner {
+			continue // same name and type set, different template
+		}
 		return name, true
 	}
 	if p.funcInstArgs == nil {
 		p.funcInstArgs = map[string][]*mtype.Type{}
 	}
+	if p.funcInstOwner == nil {
+		p.funcInstOwner = map[string]string{}
+	}
 	p.funcInstArgs[name] = typeArgs
+	p.funcInstOwner[name] = owner
 	return name, false
 }
 
@@ -620,6 +667,13 @@ func (p *Parser) emitInstantiatedMethod(tmpl, methTmpl *genericTemplate, typeArg
 	}
 	restore := p.bindTypeParams(tmpl.typeParams, typeArgs)
 	defer restore()
+	// The body's unqualified names belong to the template's package, not the
+	// instantiation site's: without this, btree's min[T] in Min's body resolves
+	// to the predeclared min instead (instantiatePendingMethods runs outside
+	// ensureTypeInstantiated's CompilingPkg window).
+	savedCompiling := p.CompilingPkg
+	p.CompilingPkg = tmpl.pkgPath
+	defer func() { p.CompilingPkg = savedCompiling }()
 	if _, err := p.registerFunc(methToks); err != nil {
 		return false, err
 	}
@@ -686,31 +740,34 @@ func (p *Parser) instantiatePendingMethods() (progress bool, err error) {
 	savedScope := p.scope
 	p.scope = ""
 	defer func() { p.scope = savedScope }()
-	for _, sym := range p.Symbols {
-		if sym.Kind != symbol.Generic {
-			continue
-		}
-		tmpl, ok := sym.Data.(*genericTemplate)
-		if !ok || tmpl.isFunc {
-			continue
-		}
-		for _, inst := range tmpl.instances {
-			for _, methTmpl := range tmpl.methods {
-				emitted, merr := p.emitInstantiatedMethod(tmpl, methTmpl, inst.typeArgs, inst.mname)
-				if merr != nil {
-					// A forward ref (ErrUndefined) is retryable: keep emitting other
-					// pairs this pass, retry on the next. Other errors abort.
-					var eu ErrUndefined
-					if errors.As(merr, &eu) {
-						if err == nil {
-							err = merr
+	// Parked builtin-shadowing templates are not in Symbols, so scan both.
+	for _, syms := range []map[string]*symbol.Symbol{p.Symbols, p.unitGenerics} {
+		for _, sym := range syms {
+			if sym.Kind != symbol.Generic {
+				continue
+			}
+			tmpl, ok := sym.Data.(*genericTemplate)
+			if !ok || tmpl.isFunc {
+				continue
+			}
+			for _, inst := range tmpl.instances {
+				for _, methTmpl := range tmpl.methods {
+					emitted, merr := p.emitInstantiatedMethod(tmpl, methTmpl, inst.typeArgs, inst.mname)
+					if merr != nil {
+						// A forward ref (ErrUndefined) is retryable: keep emitting other
+						// pairs this pass, retry on the next. Other errors abort.
+						var eu ErrUndefined
+						if errors.As(merr, &eu) {
+							if err == nil {
+								err = merr
+							}
+							continue
 						}
-						continue
+						return progress, merr
 					}
-					return progress, merr
-				}
-				if emitted {
-					progress = true
+					if emitted {
+						progress = true
+					}
 				}
 			}
 		}

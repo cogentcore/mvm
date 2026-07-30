@@ -700,11 +700,14 @@ func (p *Parser) preRegisterGenericFuncs(decls []Tokens) {
 		if s, ok := p.Symbols[key]; ok && s.Kind == symbol.Generic {
 			continue // already registered (real decl parsed, or a duplicate pre-pass)
 		}
+		if p.unitGenerics[key] != nil {
+			continue
+		}
 		params, err := p.parseTypeParamList(decl[2].Token, false)
 		if err != nil {
 			continue // let registerFunc surface the error during the loop
 		}
-		p.SymSet(key, p.genericFuncSymbol(name, params, decl, nil))
+		p.setGenericSym(key, p.genericFuncSymbol(name, params, decl, nil))
 	}
 }
 

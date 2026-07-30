@@ -222,8 +222,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			// Implicit generic call: Name(args) where Name is a generic function.
 			if i > 0 && !in[i-1].Tok.IsOperator() && len(out) > 0 && out[len(out)-1].Tok == lang.Ident {
 				prevName := out[len(out)-1].Str
-				if gs, _, ok := p.symGet(prevName); ok && gs.Kind == symbol.Generic {
-					tmpl := gs.Data.(*genericTemplate)
+				if gs, tmpl, ok := p.genericSym(prevName); ok {
 					if tmpl.isFunc {
 						typeArgs, err := p.inferTypeArgs(tmpl, gs, t.Token, nil)
 						if err != nil {
@@ -365,8 +364,7 @@ func (p *Parser) parseExpr(in Tokens, typeStr string) (out Tokens, err error) {
 			// Generic instantiation: Name[TypeArgs](...) or Name[TypeArgs]{...}.
 			if len(out) > 0 && out[len(out)-1].Tok == lang.Ident {
 				prevName := out[len(out)-1].Str
-				if gs, _, ok := p.symGet(prevName); ok && gs.Kind == symbol.Generic {
-					tmpl := gs.Data.(*genericTemplate)
+				if gs, tmpl, ok := p.genericSym(prevName); ok {
 					out = out[:len(out)-1] // remove the generic name ident
 					if tmpl.isFunc {
 						typeArgs, err := p.resolveTypeArgs(t.Token)

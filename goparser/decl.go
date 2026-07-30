@@ -1240,7 +1240,7 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 	// which requires each segment to have an identifier constraint.
 	if !isAlias && len(toks) > 0 && toks[0].Tok == lang.BracketBlock {
 		if params, err := p.parseTypeParamList(toks[0].Token, true); err == nil {
-			p.SymSet(p.pkgKey(in[0].Str), &symbol.Symbol{
+			p.setGenericSym(p.pkgKey(in[0].Str), &symbol.Symbol{
 				Kind: symbol.Generic,
 				Name: in[0].Str,
 				Used: true,

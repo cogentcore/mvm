@@ -48,32 +48,34 @@ type Parser struct {
 	labelCount     map[string]int
 	breakLabel     string
 	continueLabel  string
-	pendingLabel   string                   // user label preceding the current for/switch statement
-	labeledJump    map[string][2]string     // maps user label to [continueLabel, breakLabel]
-	ctrlStack      []ctrlFrame              // active for/switch/select frames (for labeled break/continue range unwind)
-	clonum         int                      // closure instance number, package-global counter
-	funcN          int                      // anonymous-function counter within the current outer function
-	initNum        int                      // init function instance counter
-	InitFuncs      []string                 // ordered list of init function internal names
-	blankSeq       int                      // counter for unique blank identifier names
-	namedOut       []string                 // scoped names of named return vars for current function
-	symTracker     []string                 // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
-	genCounter     int                      // monotonic source of resolveDecls generations
-	curGen         int                      // generation of the current resolveDecls (nestable; saved/restored)
-	typeGen        map[*mtype.Type]int      // generation each declared placeholder *Type was minted in
-	batchFuncDecls map[string]bool          // canonical keys of top-level funcs/methods registered in the current resolveDecls batch
-	forwardDecls   map[string]bool          // batch keys registered bodyless
-	instanceDecls  []DeferredDecl           // generic instance bodies tagged with their template's package
-	funcInstArgs   map[string][]*mtype.Type // generic-func instance name -> bound type args
-	instantiating  map[string]bool          // generic-type instances whose body is parsing now
-	typeOnly       bool                     // when true, addSymVar is a no-op (Phase 1 signature-only parse)
-	regFuncSig     bool                     // set by parseFunc so the outermost func-type parse registers its params as locals
-	inForInit      bool                     // true while parsing for-init or range clause (marks LoopVar)
-	rangeAssign    Tokens                   // assign-form range per-iteration assigns, stashed for parseFor
-	blockDepth     int                      // nesting depth of function bodies and loops (>0 discards unused expr-statement values)
-	instDepth      int                      // nesting depth of generic instantiations
-	buildCtx       *buildContext            // build constraint context for file filtering
-	embeds         map[string][]byte        // //go:embed file bytes by canonical var key
+	pendingLabel   string                    // user label preceding the current for/switch statement
+	labeledJump    map[string][2]string      // maps user label to [continueLabel, breakLabel]
+	ctrlStack      []ctrlFrame               // active for/switch/select frames (for labeled break/continue range unwind)
+	clonum         int                       // closure instance number, package-global counter
+	funcN          int                       // anonymous-function counter within the current outer function
+	initNum        int                       // init function instance counter
+	InitFuncs      []string                  // ordered list of init function internal names
+	blankSeq       int                       // counter for unique blank identifier names
+	namedOut       []string                  // scoped names of named return vars for current function
+	symTracker     []string                  // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
+	genCounter     int                       // monotonic source of resolveDecls generations
+	curGen         int                       // generation of the current resolveDecls (nestable; saved/restored)
+	typeGen        map[*mtype.Type]int       // generation each declared placeholder *Type was minted in
+	batchFuncDecls map[string]bool           // canonical keys of top-level funcs/methods registered in the current resolveDecls batch
+	forwardDecls   map[string]bool           // batch keys registered bodyless
+	instanceDecls  []DeferredDecl            // generic instance bodies tagged with their template's package
+	funcInstArgs   map[string][]*mtype.Type  // generic-func instance name -> bound type args
+	funcInstOwner  map[string]string         // generic-func instance name -> "<pkgPath>.<template name>"
+	unitGenerics   map[string]*symbol.Symbol // compiled-unit generic templates whose bare key is a predeclared builtin
+	instantiating  map[string]bool           // generic-type instances whose body is parsing now
+	typeOnly       bool                      // when true, addSymVar is a no-op (Phase 1 signature-only parse)
+	regFuncSig     bool                      // set by parseFunc so the outermost func-type parse registers its params as locals
+	inForInit      bool                      // true while parsing for-init or range clause (marks LoopVar)
+	rangeAssign    Tokens                    // assign-form range per-iteration assigns, stashed for parseFor
+	blockDepth     int                       // nesting depth of function bodies and loops (>0 discards unused expr-statement values)
+	instDepth      int                       // nesting depth of generic instantiations
+	buildCtx       *buildContext             // build constraint context for file filtering
+	embeds         map[string][]byte         // //go:embed file bytes by canonical var key
 }
 
 // RecordBareAlias marks key as a bare alias of an import-path target's
@@ -131,6 +133,13 @@ func (p *Parser) symGet(name string) (*symbol.Symbol, string, bool) {
 		// here; defer so this package's own same-named decl registers first.
 		if ok && sc == "" && p.foreignBareAlias(s, name) {
 			return nil, "", false
+		}
+	}
+	// The unit's own declaration shadows the predeclared name for the whole unit;
+	// setGenericSym parked it aside so other packages keep the universe entry.
+	if ok && s.Kind == symbol.Builtin {
+		if g := p.unitGeneric(name); g != nil {
+			return g, "", true
 		}
 	}
 	return s, sc, ok
@@ -469,6 +478,7 @@ func (p *Parser) TakeInstanceDecls() []DeferredDecl {
 // UnitState is an opaque pre-compile snapshot for SnapshotUnit/RestoreUnit.
 type UnitState struct {
 	syms  map[string]*symbol.Symbol
+	unitg map[string]*symbol.Symbol // parked builtin-shadowing templates; bypass Symbols, so snapshot separately
 	pkgs  map[string]*symbol.Package
 	insts map[*genericTemplate]int // per pre-existing generic template: len(instances)
 	inits int
@@ -488,9 +498,16 @@ func (p *Parser) SnapshotUnit() UnitState {
 			}
 		}
 	}
+	for _, v := range p.unitGenerics {
+		if t, ok := v.Data.(*genericTemplate); ok {
+			insts[t] = len(t.instances)
+		}
+	}
+	unitg := make(map[string]*symbol.Symbol, len(p.unitGenerics))
+	maps.Copy(unitg, p.unitGenerics)
 	pkgs := make(map[string]*symbol.Package, len(p.Packages))
 	maps.Copy(pkgs, p.Packages)
-	return UnitState{syms: syms, pkgs: pkgs, insts: insts, inits: len(p.InitFuncs)}
+	return UnitState{syms: syms, unitg: unitg, pkgs: pkgs, insts: insts, inits: len(p.InitFuncs)}
 }
 
 // RestoreUnit reverts a failed compile to s.
@@ -505,6 +522,12 @@ func (p *Parser) RestoreUnit(s UnitState) {
 			p.Symbols[k] = v // mvm:symkey-ok: restores snapshot keys verbatim, not a new binding
 		}
 	}
+	for k := range p.unitGenerics {
+		if _, ok := s.unitg[k]; !ok {
+			delete(p.unitGenerics, k)
+		}
+	}
+	maps.Copy(p.unitGenerics, s.unitg)
 	for k := range p.Packages {
 		if _, ok := s.pkgs[k]; !ok {
 			delete(p.Packages, k)

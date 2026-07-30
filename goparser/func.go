@@ -58,7 +58,7 @@ func (p *Parser) registerFunc(toks Tokens) (bool, error) {
 			if errors.As(gerr, &eu) {
 				return false, gerr
 			}
-			p.SymSet(p.pkgKey(fname), p.genericFuncSymbol(fname, params, toks, genType))
+			p.setGenericSym(p.pkgKey(fname), p.genericFuncSymbol(fname, params, toks, genType))
 			return true, nil
 		}
 		if bi > 0 {
@@ -304,7 +304,10 @@ func (p *Parser) parseFunc(in Tokens) (out Tokens, err error) {
 	case lang.Ident:
 		// Skip generic templates (instantiated on use), keyed by own pkg: a bare
 		// lookup would match a foreign same-named generic and drop the body.
-		if s, ok := p.Symbols[p.funcDeclKey(in[1].Str)]; ok && s.Kind == symbol.Generic {
+		// A builtin-shadowing template is parked outside Symbols, so check there too.
+		if key := p.funcDeclKey(in[1].Str); p.unitGeneric(key) != nil {
+			return nil, nil
+		} else if s, ok := p.Symbols[key]; ok && s.Kind == symbol.Generic {
 			return nil, nil
 		}
 		fname = in[1].Str

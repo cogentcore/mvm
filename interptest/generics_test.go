@@ -747,3 +747,118 @@ func main() {
 		t.Errorf("stdout = %q, want %q\nstderr: %s", got, want, stderr.String())
 	}
 }
+
+// A package-level generic min[T]/max[T] shadows the predeclared builtins for its own package only.
+// Registering the template at the bare key evicted the universe entry, so an interpreted stdlib package's own min/max call then resolved to the foreign template: "cannot infer type parameter T".
+// This is the google/btree shape.
+func TestGenericShadowsBuiltinMinMax(t *testing.T) {
+	src := `package main
+
+import (
+	"fmt"
+	"slices"
+)
+
+type node[T any] struct{ items []T }
+
+func min[T any](n *node[T]) (_ T, found bool) {
+	if n == nil || len(n.items) == 0 {
+		return
+	}
+	return n.items[0], true
+}
+
+func max[T any](n *node[T]) (_ T, found bool) {
+	if n == nil || len(n.items) == 0 {
+		return
+	}
+	return n.items[len(n.items)-1], true
+}
+
+func main() {
+	n := &node[int]{items: []int{3, 7, 9}}
+	lo, _ := min(n)
+	hi, _ := max(n)
+	fmt.Println(lo, hi, slices.Min([]int{5, 2, 8}), slices.Max([]int{5, 2, 8}))
+}
+`
+	if got, want := evalOut(t, "shadow_min_max.go", src), "3 9 2 8\n"; got != want {
+		t.Errorf("stdout = %q, want %q", got, want)
+	}
+}
+
+// Generic instances are keyed by an unqualified mangled name, so two packages' same-named generics both land on "Less#int".
+// Reuse used to be gated on the type args alone, which handed btree's Less[int] cmp.Less[int]'s code.
+func TestGenericInstanceNameCrossPkg(t *testing.T) {
+	src := `package main
+
+import (
+	"fmt"
+	"slices"
+)
+
+type LessFunc[T any] func(a, b T) bool
+
+func Less[T ~int]() LessFunc[T] { return func(a, b T) bool { return a < b } }
+
+func main() {
+	s := []int{5, 2, 8}
+	slices.Sort(s) // instantiates cmp.Less[int]
+	fmt.Println(s, Less[int]()(1, 2))
+}
+`
+	if got, want := evalOut(t, "instance_name_crosspkg.go", src), "[2 5 8] true\n"; got != want {
+		t.Errorf("stdout = %q, want %q", got, want)
+	}
+}
+
+// A builtin-shadowing generic is parked outside p.Symbols, so RestoreUnit has
+// to roll it back explicitly: a failed unit used to leave max[T] installed and
+// every later unit's builtin max then failed to infer its type parameter.
+func TestGenericShadowBuiltinRollback(t *testing.T) {
+	i := interp.NewInterpreter(golang.GoSpec)
+	i.ImportPackageValues(stdlib.Values)
+	if _, err := i.Eval("u1.go", "func max[T any](a []T) (_ T) { return }\nundefinedThing()\n"); err == nil {
+		t.Fatal("unit 1 should not compile")
+	}
+	v, err := i.Eval("u2.go", "max(1, 2)\n")
+	if err != nil {
+		t.Fatalf("unit 2: %v", err)
+	}
+	if got := v.Interface(); got != 2 {
+		t.Errorf("max(1, 2) = %v, want 2", got)
+	}
+}
+
+// A generic *type* shadows the predeclared builtins the same way a generic func
+// does, methods included; only the func half was parked at first, so the type
+// half still evicted the universe entry.
+func TestGenericTypeShadowsBuiltin(t *testing.T) {
+	src := `package main
+
+import (
+	"fmt"
+	"slices"
+)
+
+type max[T any] struct{ items []T }
+
+func (m *max[T]) First() (_ T, ok bool) {
+	if len(m.items) == 0 {
+		return
+	}
+	return m.items[0], true
+}
+
+func (m max[T]) Len() int { return len(m.items) }
+
+func main() {
+	m := &max[int]{items: []int{3, 7, 9}}
+	v, ok := m.First()
+	fmt.Println(v, ok, m.Len(), slices.Min([]int{5, 2, 8}), slices.Max([]int{5, 2, 8}))
+}
+`
+	if got, want := evalOut(t, "shadow_gtype.go", src), "3 true 3 2 8\n"; got != want {
+		t.Errorf("stdout = %q, want %q", got, want)
+	}
+}
