@@ -60,6 +60,7 @@ type genericTemplate struct {
 	methods    []*genericTemplate // methods defined on this generic type
 	instances  []genericInstance  // monomorphizations, kept so methods attached after instantiation can still be emitted
 	pkgPath    string             // full import path of the package where this template was declared; "" for main/REPL. Used during instantiation to resolve unqualified references in the body against the owning pkg's canonical keys.
+	gen        int                // declaring resolveDecls generation, to separate successive units' same-named templates (see templateOwner)
 }
 
 type genericInstance struct {
@@ -79,6 +80,7 @@ func (p *Parser) genericFuncSymbol(name string, params []typeParam, rawToks Toke
 			rawTokens:  rawToks,
 			isFunc:     true,
 			pkgPath:    p.importingPkg,
+			gen:        p.curGen,
 		},
 	}
 }
@@ -537,9 +539,7 @@ func (p *Parser) instantiate(tmpl *genericTemplate, typeArgs []*mtype.Type, pos 
 }
 
 // setGenericSym registers a generic template at key.
-// A compiled-unit template shadowing a predeclared builtin (btree's min[T]/max[T]) sits at a bare key, so evicting the universe entry would break every other package's builtin calls.
-// Park it aside instead, where unitGeneric finds it for the unit's own code.
-// Builtins only ever live at bare keys, so the parked key is always the plain name unitGeneric looks up.
+// A unit template shadowing a builtin (btree's min[T]) sits at a bare key, and evicting the universe entry there would break every other package's builtin calls.
 func (p *Parser) setGenericSym(key string, sym *symbol.Symbol) {
 	if prev, ok := p.Symbols[key]; ok && prev.Kind == symbol.Builtin {
 		if p.unitGenerics == nil {
@@ -551,8 +551,7 @@ func (p *Parser) setGenericSym(key string, sym *symbol.Symbol) {
 	p.SymSet(key, sym)
 }
 
-// unitGeneric returns the parked template shadowing predeclared name, if the
-// compiled unit itself (not an imported package) is being parsed.
+// unitGeneric returns the parked template shadowing name, visible only while the unit itself is parsed.
 func (p *Parser) unitGeneric(name string) *symbol.Symbol {
 	if p.CompilingPkg != "" || p.importingPkg != "" {
 		return nil
@@ -573,23 +572,19 @@ func (p *Parser) genericSym(name string) (*symbol.Symbol, *genericTemplate, bool
 	return s, tmpl, true
 }
 
+// templateOwner separates templates sharing a mangled name: cmp.Less[int] and btree.Less[int] are both "Less#int".
+// Unit templates have no pkgPath, hence the generation fallback.
+func templateOwner(tmpl *genericTemplate) string {
+	if tmpl.pkgPath != "" {
+		return tmpl.pkgPath + "." + tmpl.name
+	}
+	return "#" + strconv.Itoa(tmpl.gen) + "." + tmpl.name
+}
+
 func (p *Parser) instanceName(tmpl *genericTemplate, typeArgs []*mtype.Type) (name string, reuse bool) {
 	base := mangledName(tmpl.name, typeArgs)
-	if !tmpl.isFunc {
-		// Generic types keep the plain name; instantiateMethod recomputes it
-		// without a suffix, so a suffix here would orphan attached methods.
-		if s, _, ok := p.Symbols.Get(base, ""); ok && s.Type != nil {
-			// Reuse a finalized instance, or a still-placeholder one only while
-			// its own body parses (self-ref). A placeholder left by a FAILED
-			// instantiation must be rebuilt on retry, not reused.
-			if !s.Type.Placeholder || p.instantiating[base] {
-				return base, true
-			}
-		}
-		return base, false
-	}
+	owner := templateOwner(tmpl)
 	name = base
-	owner := tmpl.pkgPath + "." + tmpl.name
 	for suffix := 0; ; suffix++ {
 		if suffix > 0 {
 			name = base + "$" + strconv.Itoa(suffix)
@@ -600,24 +595,26 @@ func (p *Parser) instanceName(tmpl *genericTemplate, typeArgs []*mtype.Type) (na
 		if !ok || s.Type == nil {
 			break
 		}
-		if prev, recorded := p.funcInstArgs[name]; recorded && !identicalTypeArgs(prev, typeArgs) {
+		if prev, recorded := p.instOwner[name]; recorded && prev != owner {
+			continue // same name, different template
+		}
+		if prev, recorded := p.instArgs[name]; recorded && !identicalTypeArgs(prev, typeArgs) {
 			continue // same name, different type set
 		}
-		// Mangled names are unqualified, so two packages' same-named generics
-		// (cmp.Less[int] and btree.Less[int]) both land on "Less#int".
-		if prev, recorded := p.funcInstOwner[name]; recorded && prev != owner {
-			continue // same name and type set, different template
+		// A placeholder is only reusable while its own body parses (self-ref).
+		if !tmpl.isFunc && s.Type.Placeholder && !p.instantiating[name] {
+			return name, false
 		}
 		return name, true
 	}
-	if p.funcInstArgs == nil {
-		p.funcInstArgs = map[string][]*mtype.Type{}
+	if p.instArgs == nil {
+		p.instArgs = map[string][]*mtype.Type{}
 	}
-	if p.funcInstOwner == nil {
-		p.funcInstOwner = map[string]string{}
+	if p.instOwner == nil {
+		p.instOwner = map[string]string{}
 	}
-	p.funcInstArgs[name] = typeArgs
-	p.funcInstOwner[name] = owner
+	p.instArgs[name] = typeArgs
+	p.instOwner[name] = owner
 	return name, false
 }
 
@@ -667,13 +664,11 @@ func (p *Parser) emitInstantiatedMethod(tmpl, methTmpl *genericTemplate, typeArg
 	}
 	restore := p.bindTypeParams(tmpl.typeParams, typeArgs)
 	defer restore()
-	// The body's unqualified names belong to the template's package, not the
-	// instantiation site's: without this, btree's min[T] in Min's body resolves
-	// to the predeclared min instead (instantiatePendingMethods runs outside
-	// ensureTypeInstantiated's CompilingPkg window).
-	savedCompiling := p.CompilingPkg
-	p.CompilingPkg = tmpl.pkgPath
-	defer func() { p.CompilingPkg = savedCompiling }()
+	// The body's unqualified names belong to the template's package, not the instantiation site's.
+	// importingPkg goes with it, else the site's package stays a fallback and symGet sees both set at once.
+	savedCompiling, savedImporting := p.CompilingPkg, p.importingPkg
+	p.CompilingPkg, p.importingPkg = tmpl.pkgPath, ""
+	defer func() { p.CompilingPkg, p.importingPkg = savedCompiling, savedImporting }()
 	if _, err := p.registerFunc(methToks); err != nil {
 		return false, err
 	}

@@ -748,9 +748,8 @@ func main() {
 	}
 }
 
-// A package-level generic min[T]/max[T] shadows the predeclared builtins for its own package only.
-// Registering the template at the bare key evicted the universe entry, so an interpreted stdlib package's own min/max call then resolved to the foreign template: "cannot infer type parameter T".
-// This is the google/btree shape.
+// A package-level generic min[T]/max[T] shadows the builtins for its own package only (the google/btree shape).
+// Registering it at the bare key evicted the universe entry, so an interpreted stdlib package's own min/max call hit the foreign template instead.
 func TestGenericShadowsBuiltinMinMax(t *testing.T) {
 	src := `package main
 
@@ -812,9 +811,8 @@ func main() {
 	}
 }
 
-// A builtin-shadowing generic is parked outside p.Symbols, so RestoreUnit has
-// to roll it back explicitly: a failed unit used to leave max[T] installed and
-// every later unit's builtin max then failed to infer its type parameter.
+// A parked template sits outside p.Symbols, so RestoreUnit has to drop it explicitly.
+// A failed unit used to leave max[T] installed, breaking builtin max in every later unit.
 func TestGenericShadowBuiltinRollback(t *testing.T) {
 	i := interp.NewInterpreter(golang.GoSpec)
 	i.ImportPackageValues(stdlib.Values)
@@ -830,9 +828,8 @@ func TestGenericShadowBuiltinRollback(t *testing.T) {
 	}
 }
 
-// A generic *type* shadows the predeclared builtins the same way a generic func
-// does, methods included; only the func half was parked at first, so the type
-// half still evicted the universe entry.
+// A generic type shadows a builtin like a generic func does, methods included.
+// Only the func half was parked at first, so the type half still evicted the universe entry.
 func TestGenericTypeShadowsBuiltin(t *testing.T) {
 	src := `package main
 
@@ -860,5 +857,48 @@ func main() {
 `
 	if got, want := evalOut(t, "shadow_gtype.go", src), "3 true 3 2 8\n"; got != want {
 		t.Errorf("stdout = %q, want %q", got, want)
+	}
+}
+
+// A local and an imported generic type of the same name both mangle to "Pointer#int".
+// Only the func half was disambiguated at first, so the type half reused whichever instance came first and lost the other's methods.
+func TestGenericTypeInstanceNameCrossPkg(t *testing.T) {
+	src := `package main
+
+import (
+	"fmt"
+	"sync/atomic"
+)
+
+type Pointer[T any] struct{ v T }
+
+func (p *Pointer[T]) Get() T { return p.v }
+
+func main() {
+	var a atomic.Pointer[int]
+	x := 7
+	a.Store(&x)
+	p := &Pointer[int]{v: 42}
+	fmt.Println(*a.Load(), p.Get())
+}
+`
+	if got, want := evalOut(t, "gtype_crosspkg.go", src), "7 42\n"; got != want {
+		t.Errorf("stdout = %q, want %q", got, want)
+	}
+}
+
+// Unit templates have no pkgPath, so redefining a generic used to keep running the previous unit's instance.
+func TestGenericRedefineAcrossUnits(t *testing.T) {
+	i := interp.NewInterpreter(golang.GoSpec)
+	i.ImportPackageValues(stdlib.Values)
+	if _, err := i.Eval("u1.go", "func Less[T ~int](a, b T) bool { return a < b }\nLess[int](1, 2)\n"); err != nil {
+		t.Fatalf("unit 1: %v", err)
+	}
+	v, err := i.Eval("u2.go", "func Less[T ~int](a, b T) bool { return a > b }\nLess[int](1, 2)\n")
+	if err != nil {
+		t.Fatalf("unit 2: %v", err)
+	}
+	if got := v.Interface(); got != false {
+		t.Errorf("redefined Less[int](1, 2) = %v, want false", got)
 	}
 }

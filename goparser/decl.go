@@ -1250,6 +1250,7 @@ func (p *Parser) parseTypeLine(in Tokens) (out Tokens, err error) {
 					rawTokens:  in,
 					isFunc:     false,
 					pkgPath:    p.importingPkg,
+					gen:        p.curGen,
 				},
 			})
 			return out, nil

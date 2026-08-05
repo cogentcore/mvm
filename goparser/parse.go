@@ -64,8 +64,8 @@ type Parser struct {
 	batchFuncDecls map[string]bool           // canonical keys of top-level funcs/methods registered in the current resolveDecls batch
 	forwardDecls   map[string]bool           // batch keys registered bodyless
 	instanceDecls  []DeferredDecl            // generic instance bodies tagged with their template's package
-	funcInstArgs   map[string][]*mtype.Type  // generic-func instance name -> bound type args
-	funcInstOwner  map[string]string         // generic-func instance name -> "<pkgPath>.<template name>"
+	instArgs       map[string][]*mtype.Type  // generic instance name -> bound type args
+	instOwner      map[string]string         // generic instance name -> owning template (see templateOwner)
 	unitGenerics   map[string]*symbol.Symbol // compiled-unit generic templates whose bare key is a predeclared builtin
 	instantiating  map[string]bool           // generic-type instances whose body is parsing now
 	typeOnly       bool                      // when true, addSymVar is a no-op (Phase 1 signature-only parse)
@@ -135,8 +135,7 @@ func (p *Parser) symGet(name string) (*symbol.Symbol, string, bool) {
 			return nil, "", false
 		}
 	}
-	// The unit's own declaration shadows the predeclared name for the whole unit;
-	// setGenericSym parked it aside so other packages keep the universe entry.
+	// setGenericSym parked the unit's own shadowing decl so other packages keep the universe entry.
 	if ok && s.Kind == symbol.Builtin {
 		if g := p.unitGeneric(name); g != nil {
 			return g, "", true
@@ -477,11 +476,13 @@ func (p *Parser) TakeInstanceDecls() []DeferredDecl {
 
 // UnitState is an opaque pre-compile snapshot for SnapshotUnit/RestoreUnit.
 type UnitState struct {
-	syms  map[string]*symbol.Symbol
-	unitg map[string]*symbol.Symbol // parked builtin-shadowing templates; bypass Symbols, so snapshot separately
-	pkgs  map[string]*symbol.Package
-	insts map[*genericTemplate]int // per pre-existing generic template: len(instances)
-	inits int
+	syms   map[string]*symbol.Symbol
+	unitg  map[string]*symbol.Symbol // parked builtin-shadowing templates; bypass Symbols, so snapshot separately
+	pkgs   map[string]*symbol.Package
+	insts  map[*genericTemplate]int // per pre-existing generic template: len(instances)
+	iargs  map[string][]*mtype.Type // instArgs and instOwner: keyed by mangled name, not by symbol key
+	iowner map[string]string
+	inits  int
 }
 
 // SnapshotUnit captures the symbol-table state before a top-level compile.
@@ -507,7 +508,11 @@ func (p *Parser) SnapshotUnit() UnitState {
 	maps.Copy(unitg, p.unitGenerics)
 	pkgs := make(map[string]*symbol.Package, len(p.Packages))
 	maps.Copy(pkgs, p.Packages)
-	return UnitState{syms: syms, unitg: unitg, pkgs: pkgs, insts: insts, inits: len(p.InitFuncs)}
+	return UnitState{
+		syms: syms, unitg: unitg, pkgs: pkgs, insts: insts,
+		iargs: maps.Clone(p.instArgs), iowner: maps.Clone(p.instOwner),
+		inits: len(p.InitFuncs),
+	}
 }
 
 // RestoreUnit reverts a failed compile to s.
@@ -528,6 +533,8 @@ func (p *Parser) RestoreUnit(s UnitState) {
 		}
 	}
 	maps.Copy(p.unitGenerics, s.unitg)
+	// Else a failed compile's entries outlive the symbols they describe, and the next one reuses a rolled-back name.
+	p.instArgs, p.instOwner = maps.Clone(s.iargs), maps.Clone(s.iowner)
 	for k := range p.Packages {
 		if _, ok := s.pkgs[k]; !ok {
 			delete(p.Packages, k)

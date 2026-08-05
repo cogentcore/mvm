@@ -92,6 +92,7 @@ func (p *Parser) registerFunc(toks Tokens) (bool, error) {
 					isFunc:     true,
 					ptrRecv:    ptrRecv,
 					pkgPath:    tmpl.pkgPath,
+					gen:        tmpl.gen,
 				})
 				return true, nil
 			}
