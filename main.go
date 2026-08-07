@@ -214,7 +214,17 @@ func humanBytes(n int64) string {
 	}
 }
 
+// tuneWasmGC lowers GOGC on wasm, where linear memory only ever grows
+// (sysUnusedOS is a no-op) and a single P lets the pacer overshoot its goal.
+// Measured on `test go/types`: peak RSS 979 -> 642 MB for 13% more time.
+func tuneWasmGC() {
+	if runtime.GOARCH == "wasm" && os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(50)
+	}
+}
+
 func main() {
+	tuneWasmGC()
 	watchProgressSignal() // Ctrl-C prints execution state; double-press aborts
 	err := dispatch(os.Args[1:])
 	// MVM_WORDDROPS telemetry: print before any os.Exit so a failing `mvm test`

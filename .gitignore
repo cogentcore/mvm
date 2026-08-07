@@ -6,6 +6,7 @@
 /extract
 /mvm
 /mvm.wasm
+/mvm.cwasm
 /bin/
 tags
 examples/c/libmvm.h

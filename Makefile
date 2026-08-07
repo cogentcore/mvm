@@ -69,6 +69,15 @@ bench:
 mvm.wasm:
 	GOOS=wasip1 GOARCH=wasm go build -o mvm.wasm .
 
+# Ahead-of-time compile mvm.wasm. Cranelift compiling the 16 MB code section at
+# load time costs ~100 MB peak RSS and ~0.2 s on every run; the .cwasm pays it
+# once. It is tied to the host CPU and the wasmtime version, so it is a local
+# build product, never a release artifact. Run it with:
+#   wasmtime run --allow-precompiled --dir=/::/ --env GOROOT=$(shell go env GOROOT) mvm.cwasm test math
+mvm.cwasm: mvm.wasm
+	@command -v wasmtime >/dev/null || { echo "wasmtime not found in PATH"; exit 1; }
+	wasmtime compile mvm.wasm -o mvm.cwasm
+
 # Run each compat package's tests through mvm.wasm under wasmtime, streaming
 # output to stdout (no JSON). The package set mirrors the compat matrix: the
 # -stdlib directives in stdlib/gen.go plus the interpreted extras, then the
@@ -76,21 +85,20 @@ mvm.wasm:
 # build can find the module-cache zips (it is offline, no proxy). Each run is
 # bounded by WASM_TIMEOUT seconds so a slow suite cannot hang the loop.
 WASM_TIMEOUT ?= 120
-compat-wasm: mvm.wasm
-	@command -v wasmtime >/dev/null || { echo "wasmtime not found in PATH"; exit 1; }
+compat-wasm: mvm.cwasm
 	@GR=$$(go env GOROOT); GMC=$$(go env GOMODCACHE); \
 	pkgs="$$(awk '$$1=="//go:generate"&&$$5=="-stdlib"{print $$6}' stdlib/gen.go) \
 		cmp iter maps slices log \
 		$$(awk '{sub(/#.*/,"")} NF{print $$1}' compat/external.txt)"; \
 	for p in $$pkgs; do \
 		echo "== $$p =="; \
-		timeout $(WASM_TIMEOUT) wasmtime --dir=/::/ \
+		timeout $(WASM_TIMEOUT) wasmtime run --allow-precompiled --dir=/::/ \
 			--env GOROOT="$$GR" --env HOME="$$HOME" --env GOMODCACHE="$$GMC" \
-			mvm.wasm test $$p -v -short || echo "[exit $$?]"; \
+			mvm.cwasm test $$p -v -short || echo "[exit $$?]"; \
 	done
 
 clean:
-	rm -f mvm mvm.wasm extract demo cover.out
+	rm -f mvm mvm.wasm mvm.cwasm extract demo cover.out
 	$(MAKE) -C examples/c clean
 
-.PHONY: all bench clean clean_generate compat compat-wasm cover cover-html dispatch-scan fast generate lint mvm.wasm test
+.PHONY: all bench clean clean_generate compat compat-wasm cover cover-html dispatch-scan fast generate lint mvm.cwasm mvm.wasm test
