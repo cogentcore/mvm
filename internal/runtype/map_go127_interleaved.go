@@ -1,4 +1,4 @@
-//go:build go1.27 && !goexperiment.mapsplitgroup
+//go:build go1.27 && !goexperiment.mapsplitgroup && !goscript
 
 package runtype
 
