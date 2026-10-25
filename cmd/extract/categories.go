@@ -164,6 +164,16 @@ func wasmDropTag(importPath, tag string) string {
 	return tag + " && !wasm"
 }
 
+// goscriptDropTag adds !goscript to the build tag of the js/wasm syscall
+// bindings: they name constants (SO_ERROR, SYS_FCNTL, ...) that the syscall
+// package of goscript, which also builds for js/wasm, does not define.
+func goscriptDropTag(importPath, goos, tag string) string {
+	if importPath != "syscall" || goos != "js" {
+		return tag
+	}
+	return tag + " && !goscript"
+}
+
 // SymbolBuildTags lists individual exported symbols that were added in a newer
 // Go release, keyed by import path then by build expression.
 // Tagged symbols are emitted in a supplement file <pkg>_<suffix>.go (e.g. crypto_go127.go).
