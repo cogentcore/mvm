@@ -18,7 +18,6 @@ import (
 	"github.com/mvm-sh/mvm/lang"
 	"github.com/mvm-sh/mvm/mtype"
 	"github.com/mvm-sh/mvm/stdlib"
-	"github.com/mvm-sh/mvm/stdlib/stdmod"
 	"github.com/mvm-sh/mvm/symbol"
 	"github.com/mvm-sh/mvm/vm"
 )
@@ -95,8 +94,7 @@ type Stats struct {
 // NewInterpreter returns a new interpreter.
 func NewInterpreter(s *lang.Spec) *Interp {
 	i := &Interp{Compiler: comp.NewCompiler(s), Machine: vm.NewMachine()}
-	i.SetStdlibFS(stdmod.DefaultFS())
-	i.SetRemoteFS(stdmod.DefaultRemoteFS())
+	setDefaultFS(i)
 	return i
 }
 
