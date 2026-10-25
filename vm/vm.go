@@ -1746,7 +1746,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 						rin[i] = mem[dh-narg-2+i].Reflect()
 					}
 					coerceInterfaceArgs(rin, rv.Type())
-					m.wrapFuncArgs(rin, mem[dh-narg-2:dh-2], rv.Type())
+					m.wrapFuncArgs(rin, mem[dh-narg-2:dh-2], rv.Type(), 0, deferSpread(packed))
 					// Flag started so a panic inside isn't re-run by panicUnwind.
 					// invokeNative makes the panic catchable by an enclosing
 					// recover() (Go semantics) instead of escaping the VM raw.
@@ -2185,7 +2185,7 @@ func (m *Machine) panicUnwind(mem *[]Value, fp, sp, ip *int, panicAddr int) (boo
 				rin[i] = (*mem)[dh-narg-2+i].Reflect()
 			}
 			coerceInterfaceArgs(rin, rv.Type())
-			m.wrapFuncArgs(rin, (*mem)[dh-narg-2:dh-2], rv.Type())
+			m.wrapFuncArgs(rin, (*mem)[dh-narg-2:dh-2], rv.Type(), 0, deferSpread(packed))
 			// A panic here supersedes the in-flight one (Go); invokeNative
 			// captures it as an mvm panic rather than letting it escape raw.
 			m.mem, m.fp, m.ip = *mem, *fp, deferIP+1
@@ -3485,7 +3485,7 @@ func (m *Machine) newGoroutine(fval Value, args []Value, spread bool) (panicked 
 			in[i] = a.Reflect()
 		}
 		coerceInterfaceArgs(in, rv.Type())
-		m.wrapFuncArgs(in, args, rv.Type())
+		m.wrapFuncArgs(in, args, rv.Type(), 0, spread)
 		if spread {
 			in[len(in)-1] = m.unwrapVariadicIface(in[len(in)-1])
 			go func() { rv.CallSlice(in) }()
@@ -4358,16 +4358,25 @@ func coerceInterfaceArgs(in []reflect.Value, funcType reflect.Type) {
 	}
 }
 
-func (m *Machine) wrapFuncArgs(in []reflect.Value, args []Value, funcType reflect.Type) {
-	for i := range in {
+// wrapFuncArgs replaces the arguments in of a call of a native func of type
+// funcType that are interpreted funcs passed for a func parameter by native
+// funcs. args are the interpreted arguments, those of in from index np on:
+// np is 1 when in[0] is a receiver that is not in args. spread is whether
+// the call passes the variadic arguments as a slice (reflect.CallSlice),
+// whose last argument is then that slice.
+func (m *Machine) wrapFuncArgs(in []reflect.Value, args []Value, funcType reflect.Type, np int, spread bool) {
+	for i := np; i < len(in); i++ {
 		paramType := paramTypeFor(funcType, i)
+		if spread && funcType.IsVariadic() && i == len(in)-1 {
+			paramType = funcType.In(funcType.NumIn() - 1)
+		}
 		if paramType == nil || paramType.Kind() != reflect.Func {
 			continue
 		}
 		if in[i].IsValid() && in[i].Type() == paramType {
 			continue
 		}
-		if gf := m.wrapForFunc(args[i], paramType); gf.IsValid() {
+		if gf := m.wrapForFunc(args[i-np], paramType); gf.IsValid() {
 			in[i] = gf
 		}
 	}
@@ -4492,7 +4501,7 @@ func (m *Machine) callIndirect(c *Instruction, fval Value, fp int) (nip, ctl int
 		}
 		ifaceWB := m.bridgeArgs(in, funcType, rv, np)
 		coerceInterfaceArgs(in, funcType)
-		m.wrapFuncArgs(in, mem[sp-narg+1:sp+1], funcType)
+		m.wrapFuncArgs(in, mem[sp-narg+1:sp+1], funcType, np, c.B&CallSpreadFlag != 0)
 		sp -= narg + 1
 		// Sync mem/fp/ip into the Machine so native funcs that
 		// introspect the interpreter (e.g. the runtime.Callers
