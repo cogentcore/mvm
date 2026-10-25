@@ -2029,6 +2029,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				c.emit(t, vm.Call, methodNarg, nret)
 				break
 			}
+			if err := c.checkCallArgs(t, s, narg, spread); err != nil {
+				return err
+			}
 			if s.Kind != symbol.Value {
 				typ := s.Type
 				if typ == nil {
@@ -5308,4 +5311,30 @@ func (c *Compiler) compileIntrinsic(
 	}
 	c.emit(t, info.op)
 	return true, nil
+}
+
+// checkCallArgs reports an error, as Go does when it compiles the call, if
+// the number of arguments narg of a call of s does not match the parameters
+// of its func type. spread is whether the call passes its last argument to
+// the variadic parameter with "...".
+func (c *Compiler) checkCallArgs(t goparser.Token, s *symbol.Symbol, narg int, spread bool) error {
+	typ := s.Type
+	if typ == nil || typ.Kind() != reflect.Func {
+		return nil
+	}
+	// The name is shown without the scope of a local name (main/f).
+	name := s.Name
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		name = name[i+1:]
+	}
+	nIn := typ.NumIn()
+	switch {
+	case spread && !typ.IsVariadic():
+		return c.errAt(t, "have (...) in call to non-variadic %s", name)
+	case narg < nIn && !(typ.IsVariadic() && !spread && narg == nIn-1):
+		return c.errAt(t, "not enough arguments in call to %s", name)
+	case narg > nIn && !(typ.IsVariadic() && !spread):
+		return c.errAt(t, "too many arguments in call to %s", name)
+	}
+	return nil
 }
