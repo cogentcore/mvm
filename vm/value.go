@@ -248,8 +248,10 @@ func (v Value) Type() reflect.Type { return v.ref.Type() }
 
 // UnwrapType checks if v encodes a stdlib type as (*T)(nil).
 // If so, it returns the underlying reflect.Type and true.
+// A package variable of a pointer type that is nil is not a type: it is
+// addressable, as the element of the pointer to it that binds it.
 func (v Value) UnwrapType() (reflect.Type, bool) {
-	if v.Kind() == reflect.Pointer && v.Reflect().IsNil() {
+	if v.Kind() == reflect.Pointer && v.Reflect().IsNil() && !v.Reflect().CanAddr() {
 		return v.Type().Elem(), true
 	}
 	return nil, false
