@@ -6,7 +6,10 @@
 // _elemType, _typeName, ...). These functions read and write those fields.
 import * as $ from '@goscript/builtin/index.js'
 import * as reflect from '@goscript/reflect/index.js'
-import { typeInfoFromReflectType } from '@goscript/reflect/type.js'
+import {
+  runtimeTypeString,
+  typeInfoFromReflectType,
+} from '@goscript/reflect/type.js'
 
 // TypeState is the private state of the goscript reflect type classes.
 type TypeState = {
@@ -61,6 +64,27 @@ export function Clone(t: reflect.Type | null): reflect.Type {
   return c as reflect.Type
 }
 
+// typeIDs holds the suffix that makes the runtime name of each named type
+// unique.
+const typeIDs = new WeakMap<object, string>()
+
+// typeCount is the number of named types given a suffix.
+let typeCount = 0
+
+// runtimeName returns the runtime name of t named name: name with a suffix
+// unique to t after a middle dot, which goscript leaves out of the Go
+// spelling of the name. The runtime type registry is keyed by runtime name,
+// so that the types of interpreters, and of declarations evaluated again,
+// that have the same name, do not replace each other there.
+function runtimeName(t: object, name: string): string {
+  let id = typeIDs.get(t)
+  if (id === undefined) {
+    id = (++typeCount).toString(36)
+    typeIDs.set(t, id)
+  }
+  return name + '·' + id
+}
+
 // SetName names t in place.
 export function SetName(
   t: reflect.Type | null,
@@ -68,23 +92,25 @@ export function SetName(
   pkgPath: string,
 ): void {
   const s = state(t) as TypeState & Record<string, unknown>
+  const rname = runtimeName(s, name)
   if (s._fields !== undefined) {
     // StructType: the name is also its identity key.
-    s._name = name
-    s._string = name
+    s._name = rname
+    s._string = rname
     s._pkgPath = pkgPath
     registerStruct(t as reflect.Type)
     return
   }
   if ('_typeName' in s) {
-    s._typeName = name
+    s._typeName = rname
   }
   if ((t as reflect.Type).Kind() === 20) {
     // InterfaceType spells its name in _name.
-    s._name = name
+    s._name = rname
     s._registeredName = undefined
   }
-  s.runtimeString = () => name
+  s.runtimeString = () => rname
+  s.String = () => name
   s.Name = () => shortName(name)
   s.PkgPath = () => pkgPath
 }
@@ -330,12 +356,12 @@ function setValueMethod(
     pointerReceiver: ptrRecv && !hasValue,
   })
   $.registerNamedValueType(
-    t.String(),
+    runtimeTypeString(t),
     tables.value.methods,
     tables.value.signatures,
   )
   $.registerNamedValueType(
-    '*' + t.String(),
+    '*' + runtimeTypeString(t),
     tables.ptr.methods,
     tables.ptr.signatures,
   )
