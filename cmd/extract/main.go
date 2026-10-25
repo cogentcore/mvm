@@ -9,6 +9,13 @@
 //
 // With -list it prints a raw "<kind> <name>" listing of a directory; with
 // -stdlib it writes an mvm stdlib binding file under ./core or ./ext.
+//
+// With -register it writes a file of bindings for each of several packages,
+// in the current directory, that registers a loader adding them when they
+// are first needed, and registers the generic functions of the package as
+// generic shims (see runRegister):
+//
+//	go run ./cmd/extract -register -pkg symbols github.com/you/pkg1 github.com/you/pkg2
 package main
 
 import (
@@ -38,23 +45,27 @@ Usage:
   extract [-o out.go] [-pkg name] <import-path> [dir]
   extract -list <directory>
   extract -stdlib <import-path> <directory>
+  extract -register -pkg name <import-path>...
 
 The default mode generates a reflect.Value binding map for <import-path>, ready
 to pass to (*interp.Interp).ImportPackageValues. The package source is located
 with 'go list' unless [dir] is given. With -list it prints a raw "<kind> <name>"
 listing of <directory>. With -stdlib it writes an mvm stdlib binding file under
-./core or ./ext.
+./core or ./ext. With -register it writes a file gen_<import-path>.go of package
+<name> for each <import-path>, which registers a loader of its bindings and its
+generic functions as generic shims.
 
 Flags:
 `
 
 var (
-	stdlibMode = flag.Bool("stdlib", false, "generate an mvm stdlib binding file at ./{core,ext}/<import-path>.go")
-	listMode   = flag.Bool("list", false, "print a raw \"<kind> <name>\" symbol listing of a directory")
-	outFile    = flag.String("o", "", "output file (default stdout); ignored when -stdlib is set")
-	pkgName    = flag.String("pkg", "main", "package clause for the generated bindings file")
-	targetOS   = flag.String("goos", "", "target GOOS for build constraint filtering")
-	targetArch = flag.String("goarch", "", "target GOARCH for build constraint filtering")
+	registerMode = flag.Bool("register", false, "write a loader of the bindings and generic shims of each package to gen_<import-path>.go")
+	stdlibMode   = flag.Bool("stdlib", false, "generate an mvm stdlib binding file at ./{core,ext}/<import-path>.go")
+	listMode     = flag.Bool("list", false, "print a raw \"<kind> <name>\" symbol listing of a directory")
+	outFile      = flag.String("o", "", "output file (default stdout); ignored when -stdlib is set")
+	pkgName      = flag.String("pkg", "main", "package clause for the generated bindings file")
+	targetOS     = flag.String("goos", "", "target GOOS for build constraint filtering")
+	targetArch   = flag.String("goarch", "", "target GOARCH for build constraint filtering")
 )
 
 func main() {
@@ -75,6 +86,10 @@ func mainErr() error {
 	if len(args) < 1 {
 		flag.Usage()
 		return errors.New("missing argument")
+	}
+
+	if *registerMode {
+		return runRegister(*pkgName, args)
 	}
 
 	fmt.Fprintln(os.Stderr, "extract", args[0], *targetOS, *targetArch)
