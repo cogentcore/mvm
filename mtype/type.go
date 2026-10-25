@@ -767,7 +767,7 @@ func writeUint32(b *strings.Builder, v uint32) {
 
 func writePtr(b *strings.Builder, p *Type) {
 	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], uint64(uintptr(unsafe.Pointer(p))))
+	binary.LittleEndian.PutUint64(buf[:], typeKeyID(p))
 	b.Write(buf[:])
 }
 

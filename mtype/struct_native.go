@@ -64,3 +64,7 @@ func patchRtype(dst, src reflect.Type) {
 		*(*byte)(unsafe.Add(d, i)) = *(*byte)(unsafe.Add(s, i))
 	}
 }
+
+// typeKeyID returns the number that stands for p in the keys of the type
+// caches: its address.
+func typeKeyID(p *Type) uint64 { return uint64(uintptr(unsafe.Pointer(p))) }
