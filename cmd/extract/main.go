@@ -405,6 +405,7 @@ func runGen(outDir, dir, importPath string) error {
 		baseTag = fmt.Sprintf("%s && %s", *targetOS, *targetArch)
 	}
 	baseTag = wasmDropTag(importPath, baseTag)
+	baseTag = goscriptDropTag(importPath, *targetOS, baseTag)
 	if err := writeBinding(filepath.Join(outDir, baseName), importPath, baseTag, false, baseValues, baseVars, baseTypes, typedConsts, constExacts); err != nil {
 		return err
 	}

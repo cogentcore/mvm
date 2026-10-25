@@ -32,7 +32,7 @@ const (
 // recovery unwinds as from the faulting instruction; a deferred write-back
 // would cost each call under goscript. An opcode moves between the
 // functions with its case.
-func (m *Machine) runWarm(c *Instruction, traceFlags uint8, panicAddr, deferRetAddr int, deferRetBits word,
+func (m *Machine) runWarm(c *Instruction, _ uint8, _, _ int, _ word,
 ) (ctl coldCtl, done bool, err error) {
 	mem, ip, fp, sp, safepointCtr := m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr
 	switch c.Op {

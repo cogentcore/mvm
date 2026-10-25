@@ -20,6 +20,12 @@ func wordFloat(w word) float64 { return w }
 // floatWord returns the word that holds f.
 func floatWord(f float64) word { return f }
 
+// wordUint returns the uint64 that w holds.
+func wordUint(w word) uint64 { return uint64(w) }
+
+// uintWord returns the word that holds u.
+func uintWord(u uint64) word { return word(u) }
+
 // getf32 returns the float32 that n holds.
 func getf32(n word) float32 { return float32(n) }
 

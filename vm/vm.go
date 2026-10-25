@@ -763,7 +763,7 @@ func (m *Machine) execConvert(c *Instruction, mem []Value, sp int) {
 		case isFloat(srcKind):
 			re = wordFloat(v.num)
 		case srcKind >= reflect.Uint && srcKind <= reflect.Uintptr:
-			re = float64(uint64(v.num))
+			re = float64(wordUint(v.num))
 		default:
 			re = float64(int64(v.num))
 		}
@@ -4208,7 +4208,7 @@ func setNumReflect(rv reflect.Value, num word) {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		rv.SetInt(int64(num))
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		rv.SetUint(uint64(num))
+		rv.SetUint(wordUint(num))
 	case reflect.Float32, reflect.Float64:
 		rv.SetFloat(wordFloat(num))
 	}

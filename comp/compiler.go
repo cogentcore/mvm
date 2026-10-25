@@ -5331,9 +5331,9 @@ func (c *Compiler) checkCallArgs(t goparser.Token, s *symbol.Symbol, narg int, s
 	switch {
 	case spread && !typ.IsVariadic():
 		return c.errAt(t, "have (...) in call to non-variadic %s", name)
-	case narg < nIn && !(typ.IsVariadic() && !spread && narg == nIn-1):
+	case narg < nIn && (!typ.IsVariadic() || spread || narg != nIn-1):
 		return c.errAt(t, "not enough arguments in call to %s", name)
-	case narg > nIn && !(typ.IsVariadic() && !spread):
+	case narg > nIn && (!typ.IsVariadic() || spread):
 		return c.errAt(t, "too many arguments in call to %s", name)
 	}
 	return nil

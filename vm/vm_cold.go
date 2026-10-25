@@ -13,7 +13,7 @@ import (
 
 // runCold runs the rare opcodes of c, which neither runLoop nor runWarm
 // runs (see runWarm). It shares runLoop's state as runWarm does.
-func (m *Machine) runCold(c *Instruction, traceFlags uint8, panicAddr, deferRetAddr int, deferRetBits word,
+func (m *Machine) runCold(c *Instruction, _ uint8, panicAddr, deferRetAddr int, _ word,
 ) (ctl coldCtl, done bool, err error) {
 	mem, ip, fp, sp, safepointCtr := m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr
 	switch c.Op {
@@ -454,7 +454,7 @@ func (m *Machine) runCold(c *Instruction, traceFlags uint8, panicAddr, deferRetA
 		mem[sp].ref = zint
 
 	case Clz64:
-		mem[sp].num = word(bits.LeadingZeros64(uint64(mem[sp].num)))
+		mem[sp].num = word(bits.LeadingZeros64(wordUint(mem[sp].num)))
 		mem[sp].ref = zint
 
 	case Ctz32:
@@ -462,7 +462,7 @@ func (m *Machine) runCold(c *Instruction, traceFlags uint8, panicAddr, deferRetA
 		mem[sp].ref = zint
 
 	case Ctz64:
-		mem[sp].num = word(bits.TrailingZeros64(uint64(mem[sp].num)))
+		mem[sp].num = word(bits.TrailingZeros64(wordUint(mem[sp].num)))
 		mem[sp].ref = zint
 
 	case Popcnt32:
@@ -470,7 +470,7 @@ func (m *Machine) runCold(c *Instruction, traceFlags uint8, panicAddr, deferRetA
 		mem[sp].ref = zint
 
 	case Popcnt64:
-		mem[sp].num = word(bits.OnesCount64(uint64(mem[sp].num)))
+		mem[sp].num = word(bits.OnesCount64(wordUint(mem[sp].num)))
 		mem[sp].ref = zint
 
 	case Rotl32:
@@ -482,7 +482,7 @@ func (m *Machine) runCold(c *Instruction, traceFlags uint8, panicAddr, deferRetA
 	case Rotl64:
 		k := int(mem[sp].num)
 		sp--
-		mem[sp].num = word(bits.RotateLeft64(uint64(mem[sp].num), k))
+		mem[sp].num = uintWord(bits.RotateLeft64(wordUint(mem[sp].num), k))
 		resetNumRef(&mem[sp])
 
 	case Rotr32:
@@ -494,7 +494,7 @@ func (m *Machine) runCold(c *Instruction, traceFlags uint8, panicAddr, deferRetA
 	case Rotr64:
 		k := int(mem[sp].num)
 		sp--
-		mem[sp].num = word(bits.RotateLeft64(uint64(mem[sp].num), -k))
+		mem[sp].num = uintWord(bits.RotateLeft64(wordUint(mem[sp].num), -k))
 		resetNumRef(&mem[sp])
 
 		// Float math (unary).
