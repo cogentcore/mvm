@@ -11,7 +11,7 @@ contributes its transitive Go dependencies to the final binary, even
 if the embedding host never imports it from interpreted code.
 
 Early on, all generated bindings lived in a single `stdlib/` package.
-A blank-import (`_ "github.com/mvm-sh/mvm/stdlib"`) pulled in
+A blank-import (`_ "github.com/cogentcore/mvm/stdlib"`) pulled in
 everything: `net/http`, `crypto/tls`, `image/jpeg`, `runtime/pprof`,
 the full `syscall` matrix. For embedders who want to run untrusted
 interpreted Go in a tight binary, or in a `js/wasm` build, or in

@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 var nativeLayoutTypes sync.Map // qualified type name -> rtypeEntry

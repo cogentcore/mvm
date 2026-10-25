@@ -8,8 +8,8 @@ import (
 	"reflect"
 	"unsafe"
 
-	"github.com/mvm-sh/mvm/internal/runtype"
-	"github.com/mvm-sh/mvm/stdlib"
+	"github.com/cogentcore/mvm/internal/runtype"
+	"github.com/cogentcore/mvm/stdlib"
 )
 
 // Sizeof/Alignof/Offsetof are intercepted at compile time - in

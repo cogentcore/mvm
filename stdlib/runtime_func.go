@@ -6,7 +6,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/vm"
 )
 
 // The runtime.Func bridge: runtime.FuncForPC over interpreted frames returns a

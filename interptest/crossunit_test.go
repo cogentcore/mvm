@@ -9,15 +9,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mvm-sh/mvm/goparser"
-	"github.com/mvm-sh/mvm/internal/derive"
-	"github.com/mvm-sh/mvm/interp"
-	"github.com/mvm-sh/mvm/lang/golang"
-	"github.com/mvm-sh/mvm/modfs"
-	"github.com/mvm-sh/mvm/stdlib"
-	_ "github.com/mvm-sh/mvm/stdlib/all"
-	"github.com/mvm-sh/mvm/stdlib/stdmod"
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/goparser"
+	"github.com/cogentcore/mvm/internal/derive"
+	"github.com/cogentcore/mvm/interp"
+	"github.com/cogentcore/mvm/lang/golang"
+	"github.com/cogentcore/mvm/modfs"
+	"github.com/cogentcore/mvm/stdlib"
+	_ "github.com/cogentcore/mvm/stdlib/all"
+	"github.com/cogentcore/mvm/stdlib/stdmod"
+	"github.com/cogentcore/mvm/vm"
 )
 
 func TestClosurePkgKeyCollision(t *testing.T) {

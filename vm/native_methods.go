@@ -3,7 +3,7 @@ package vm
 import (
 	"reflect"
 
-	"github.com/mvm-sh/mvm/internal/runtype"
+	"github.com/cogentcore/mvm/internal/runtype"
 )
 
 // Native method tables (ADR-023 phase 1): each native receiver type caches, per

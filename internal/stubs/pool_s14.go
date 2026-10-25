@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"unsafe"
 
-	"github.com/mvm-sh/mvm/internal/runtype"
+	"github.com/cogentcore/mvm/internal/runtype"
 )
 
 //go:noinline

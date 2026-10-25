@@ -3,7 +3,7 @@
 package stubs
 
 import (
-	"github.com/mvm-sh/mvm/internal/runtype"
+	"github.com/cogentcore/mvm/internal/runtype"
 )
 
 // FillMethods installs methods on the goscript target, where each method is

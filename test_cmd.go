@@ -15,12 +15,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mvm-sh/mvm/goparser"
-	"github.com/mvm-sh/mvm/interp"
-	"github.com/mvm-sh/mvm/lang/golang"
-	"github.com/mvm-sh/mvm/modfs"
-	"github.com/mvm-sh/mvm/stdlib"
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/goparser"
+	"github.com/cogentcore/mvm/interp"
+	"github.com/cogentcore/mvm/lang/golang"
+	"github.com/cogentcore/mvm/modfs"
+	"github.com/cogentcore/mvm/stdlib"
+	"github.com/cogentcore/mvm/vm"
 )
 
 // withPanicDiag prints an unrecovered test panic's full mvm diagnostic (location

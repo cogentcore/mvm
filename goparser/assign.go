@@ -3,7 +3,7 @@ package goparser
 import (
 	"fmt"
 
-	"github.com/mvm-sh/mvm/lang"
+	"github.com/cogentcore/mvm/lang"
 )
 
 func (p *Parser) parseAssign(in Tokens, aindex int) (out Tokens, err error) {

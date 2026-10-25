@@ -5,7 +5,7 @@ package mtype
 import (
 	"reflect"
 
-	"github.com/mvm-sh/mvm/internal/gsreflect"
+	"github.com/cogentcore/mvm/internal/gsreflect"
 )
 
 // patchRtype gives dst the struct layout of src in place, keeping its name.

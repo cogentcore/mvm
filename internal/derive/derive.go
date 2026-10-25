@@ -14,8 +14,8 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/mvm-sh/mvm/internal/runtype"
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/internal/runtype"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 // SynthReservation holds a named type's reserved value (method-set T) and

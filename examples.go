@@ -11,7 +11,7 @@ import (
 	"go/token"
 	"strings"
 
-	"github.com/mvm-sh/mvm/interp"
+	"github.com/cogentcore/mvm/interp"
 )
 
 // exampleEntry is a runnable Example* function paired with its expected output.

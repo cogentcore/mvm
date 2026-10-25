@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mvm-sh/mvm/mtype"
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/mtype"
+	"github.com/cogentcore/mvm/vm"
 )
 
 // The const-typing helpers must work on symbolic types whose Rtype is not yet

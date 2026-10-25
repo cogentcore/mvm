@@ -4,7 +4,7 @@
 // rtype memory edits that internal/runtype makes natively.
 //
 // The implementation is the goscript override in
-// gsoverride/github.com/mvm-sh/mvm/internal/gsreflect, passed to goscript
+// gsoverride/github.com/cogentcore/mvm/internal/gsreflect, passed to goscript
 // with --gs-path. The Go bodies here only panic: the package is used only
 // by the goscript build of internal/runtype and mtype.
 package gsreflect

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mvm-sh/mvm/modfs"
-	"github.com/mvm-sh/mvm/stdlib"
+	"github.com/cogentcore/mvm/modfs"
+	"github.com/cogentcore/mvm/stdlib"
 )
 
 // ModulePath and Version pin the std module shipped with mvm. The

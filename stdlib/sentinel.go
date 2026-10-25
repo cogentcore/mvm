@@ -5,7 +5,7 @@ import (
 	"io/fs"
 	"reflect"
 
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/vm"
 )
 
 // Reconcile interpreted sentinels (a distinct errors.New pointer each) with the

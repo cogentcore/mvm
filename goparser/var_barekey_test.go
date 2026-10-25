@@ -3,8 +3,8 @@ package goparser
 import (
 	"testing"
 
-	"github.com/mvm-sh/mvm/lang/golang"
-	"github.com/mvm-sh/mvm/symbol"
+	"github.com/cogentcore/mvm/lang/golang"
+	"github.com/cogentcore/mvm/symbol"
 )
 
 // A package-level `var X T = ...` declared while parsing an imported package must

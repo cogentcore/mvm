@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mvm-sh/mvm/lang"
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/lang"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 func (p *Parser) parseDefer(in Tokens) (out Tokens, err error) {

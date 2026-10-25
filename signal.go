@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/vm"
 )
 
 const doublePressWindow = 1 * time.Second

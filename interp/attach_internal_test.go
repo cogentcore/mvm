@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mvm-sh/mvm/internal/derive"
-	"github.com/mvm-sh/mvm/lang/golang"
-	"github.com/mvm-sh/mvm/mtype"
-	"github.com/mvm-sh/mvm/stdlib"
-	"github.com/mvm-sh/mvm/symbol"
+	"github.com/cogentcore/mvm/internal/derive"
+	"github.com/cogentcore/mvm/lang/golang"
+	"github.com/cogentcore/mvm/mtype"
+	"github.com/cogentcore/mvm/stdlib"
+	"github.com/cogentcore/mvm/symbol"
 )
 
 // Reservations key only on value types, never pointer *Types. A derived,

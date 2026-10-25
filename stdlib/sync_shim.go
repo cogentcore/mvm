@@ -1,6 +1,6 @@
 package stdlib
 
-import "github.com/mvm-sh/mvm/goparser"
+import "github.com/cogentcore/mvm/goparser"
 
 // syncGenericShim defines the generic sync helpers, which can't be expressed
 // as a single reflect.ValueOf binding, for interpreted callers (native bridged

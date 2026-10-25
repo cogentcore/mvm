@@ -9,10 +9,10 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/mvm-sh/mvm/lang"
-	"github.com/mvm-sh/mvm/mtype"
-	"github.com/mvm-sh/mvm/symbol"
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/lang"
+	"github.com/cogentcore/mvm/mtype"
+	"github.com/cogentcore/mvm/symbol"
+	"github.com/cogentcore/mvm/vm"
 )
 
 var nilValue = vm.ValueOf(nil)

@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"runtime/metrics"
 
-	"github.com/mvm-sh/mvm/stdlib"
+	"github.com/cogentcore/mvm/stdlib"
 )
 
 func init() {

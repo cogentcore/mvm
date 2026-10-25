@@ -4,9 +4,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mvm-sh/mvm/lang/golang"
-	"github.com/mvm-sh/mvm/mtype"
-	"github.com/mvm-sh/mvm/symbol"
+	"github.com/cogentcore/mvm/lang/golang"
+	"github.com/cogentcore/mvm/mtype"
+	"github.com/cogentcore/mvm/symbol"
 )
 
 // resolveIfaceMethodSym must take a method's static return type from the

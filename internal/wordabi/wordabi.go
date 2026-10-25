@@ -25,7 +25,7 @@ import (
 	"reflect"
 	"unsafe"
 
-	"github.com/mvm-sh/mvm/internal/runtype"
+	"github.com/cogentcore/mvm/internal/runtype"
 )
 
 const wordSize = unsafe.Sizeof(uintptr(0))

@@ -17,7 +17,7 @@ formatting under `mvm test github.com/pkg/errors` looked like:
 
 ```
 error
-github.com/mvm-sh/mvm/vm.(*Machine).Run
+github.com/cogentcore/mvm/vm.(*Machine).Run
     /home/.../vm/vm.go:578
 ...
 ```

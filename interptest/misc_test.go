@@ -10,12 +10,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mvm-sh/mvm/interp"
-	"github.com/mvm-sh/mvm/lang/golang"
-	"github.com/mvm-sh/mvm/modfs"
-	"github.com/mvm-sh/mvm/stdlib"
-	_ "github.com/mvm-sh/mvm/stdlib/all"
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/interp"
+	"github.com/cogentcore/mvm/lang/golang"
+	"github.com/cogentcore/mvm/modfs"
+	"github.com/cogentcore/mvm/stdlib"
+	_ "github.com/cogentcore/mvm/stdlib/all"
+	"github.com/cogentcore/mvm/vm"
 )
 
 // Regression for `mvm test crypto/ecdh` -> "undefined: ecdh.PrivateKey".
@@ -500,7 +500,7 @@ func main() {
 }
 
 // TestIssue9MultiReturnTupleAssignCrossPkg is the regression test for
-// github.com/mvm-sh/mvm/issues/9. parseImportLine used to register `_` as a
+// github.com/cogentcore/mvm/issues/9. parseImportLine used to register `_` as a
 // Kind=symbol.Pkg entry for `import _ "path"`, polluting the symbol table; a
 // later `tag, _ = f(tag)` would resolve the blank LHS to that Pkg symbol
 // instead of Kind==Unset, miss the blank-shortcut at comp/compiler.go's

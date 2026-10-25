@@ -2,7 +2,7 @@
 
 package interp
 
-import "github.com/mvm-sh/mvm/stdlib/stdmod"
+import "github.com/cogentcore/mvm/stdlib/stdmod"
 
 // setDefaultFS sets the default import file systems of i: the embedded std
 // module for stdlib imports, and the offline module cache for others.

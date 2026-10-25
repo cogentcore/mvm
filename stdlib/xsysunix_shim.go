@@ -1,6 +1,6 @@
 package stdlib
 
-import "github.com/mvm-sh/mvm/goparser"
+import "github.com/cogentcore/mvm/goparser"
 
 // x/sys/unix declares these bodyless (assembly jumping to the syscall package);
 // reimplement them as pure-Go wrappers over the bridged syscall equivalents.

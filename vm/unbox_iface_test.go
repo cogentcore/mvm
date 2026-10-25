@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 type unboxWrapper struct{ V int32 }

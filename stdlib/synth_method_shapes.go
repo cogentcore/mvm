@@ -10,9 +10,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/mvm-sh/mvm/internal/runtype"
-	"github.com/mvm-sh/mvm/internal/stubs"
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/internal/runtype"
+	"github.com/cogentcore/mvm/internal/stubs"
+	"github.com/cogentcore/mvm/vm"
 )
 
 // Synth method shapes whose native callback types name a specific stdlib package

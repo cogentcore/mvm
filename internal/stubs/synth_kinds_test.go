@@ -8,7 +8,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/mvm-sh/mvm/internal/runtype"
+	"github.com/cogentcore/mvm/internal/runtype"
 )
 
 // stringerSig is the reflect.Type for func() string (shape S1 without recv).

@@ -16,9 +16,9 @@ import (
 	"unsafe" // to allow setting unexported struct fields
 	"weak"
 
-	"github.com/mvm-sh/mvm/internal/derive"
-	"github.com/mvm-sh/mvm/internal/runtype"
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/internal/derive"
+	"github.com/cogentcore/mvm/internal/runtype"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 // Op is a VM opcode (bytecode instruction).

@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mvm-sh/mvm/interp"
-	"github.com/mvm-sh/mvm/lang/golang"
-	"github.com/mvm-sh/mvm/stdlib"
-	_ "github.com/mvm-sh/mvm/stdlib/all"
+	"github.com/cogentcore/mvm/interp"
+	"github.com/cogentcore/mvm/lang/golang"
+	"github.com/cogentcore/mvm/stdlib"
+	_ "github.com/cogentcore/mvm/stdlib/all"
 )
 
 // A synth (interpreted) value implementing error/Stringer must render correctly

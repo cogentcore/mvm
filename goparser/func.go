@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mvm-sh/mvm/internal/derive"
-	"github.com/mvm-sh/mvm/lang"
-	"github.com/mvm-sh/mvm/mtype"
-	"github.com/mvm-sh/mvm/symbol"
+	"github.com/cogentcore/mvm/internal/derive"
+	"github.com/cogentcore/mvm/lang"
+	"github.com/cogentcore/mvm/mtype"
+	"github.com/cogentcore/mvm/symbol"
 )
 
 func (p *Parser) registerFunc(toks Tokens) (bool, error) {

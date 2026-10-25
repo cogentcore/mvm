@@ -18,7 +18,7 @@ import (
 	"reflect"
 	"unsafe"
 
-	"github.com/mvm-sh/mvm/internal/gsreflect"
+	"github.com/cogentcore/mvm/internal/gsreflect"
 )
 
 // MethodSpec describes one method to install on a synthesized rtype.

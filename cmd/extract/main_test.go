@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mvm-sh/mvm/symbol"
+	"github.com/cogentcore/mvm/symbol"
 )
 
 func TestScanImports(t *testing.T) {
@@ -228,7 +228,7 @@ func TestBuildValuesFileEmpty(t *testing.T) {
 // against a real in-module package, with no network access.
 func TestRunValues(t *testing.T) {
 	var buf bytes.Buffer
-	if err := runValues(&buf, "github.com/mvm-sh/mvm/symbol", ""); err != nil {
+	if err := runValues(&buf, "github.com/cogentcore/mvm/symbol", ""); err != nil {
 		t.Fatal(err)
 	}
 	got := buf.String()
@@ -236,7 +236,7 @@ func TestRunValues(t *testing.T) {
 
 	for _, want := range []string{
 		`var symbolValues = map[string]map[string]reflect.Value{`,
-		`"github.com/mvm-sh/mvm/symbol": {`,
+		`"github.com/cogentcore/mvm/symbol": {`,
 		`reflect.ValueOf(symbol.BinPkg)`,         // a func
 		`reflect.ValueOf((*symbol.Symbol)(nil))`, // a type
 	} {
@@ -264,7 +264,7 @@ func TestRunValuesRelativePath(t *testing.T) {
 	got := buf.String()
 	mustParse(t, got)
 
-	if !strings.Contains(got, `"github.com/mvm-sh/mvm/symbol"`) {
+	if !strings.Contains(got, `"github.com/cogentcore/mvm/symbol"`) {
 		t.Errorf("expected canonical import path; got:\n%s", got)
 	}
 	if strings.Contains(got, `".":`) || strings.Contains(got, "\t\".\"\n") {

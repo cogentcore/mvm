@@ -10,15 +10,15 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/mvm-sh/mvm/goparser"
-	"github.com/mvm-sh/mvm/interp"
-	"github.com/mvm-sh/mvm/lang/golang"
-	"github.com/mvm-sh/mvm/stdlib"
+	"github.com/cogentcore/mvm/goparser"
+	"github.com/cogentcore/mvm/interp"
+	"github.com/cogentcore/mvm/lang/golang"
+	"github.com/cogentcore/mvm/stdlib"
 )
 
 const runUsageText = `Usage: mvm run [options] [path|import-path] [args]
 Runs a local .go file, or a remote main package given by import path
-(e.g. github.com/mvm-sh/mvm/cmd/mvmlint) fetched via the Go module proxy.
+(e.g. github.com/cogentcore/mvm/cmd/mvmlint) fetched via the Go module proxy.
 Arguments after the path/import-path are forwarded as the program's os.Args.
 Options:
 `

@@ -111,7 +111,7 @@ import (
     "<importPath>"
     "reflect"
 
-    "github.com/mvm-sh/mvm/stdlib"
+    "github.com/cogentcore/mvm/stdlib"
 )
 
 func init() {
@@ -188,11 +188,11 @@ Top-level maps:
 
 ## Dependencies
 
-- `github.com/mvm-sh/mvm/goparser`: used to parse the package source
+- `github.com/cogentcore/mvm/goparser`: used to parse the package source
   with the same build-tag handling as the interpreter itself, so
   `extract` sees only files that mvm would actually run.
-- `github.com/mvm-sh/mvm/symbol`: `Kind`, `Symbol`.
-- `github.com/mvm-sh/mvm/lang/golang`: Go language spec for the parser.
+- `github.com/cogentcore/mvm/symbol`: `Kind`, `Symbol`.
+- `github.com/cogentcore/mvm/lang/golang`: Go language spec for the parser.
 - `go/constant`: for the over-`int64` const detection.
 - `go/format`: gofmt the buffered output before writing.
 - `go/build`: `ImportDir` resolves the declared package name from an

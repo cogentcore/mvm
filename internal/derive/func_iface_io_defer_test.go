@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 // A struct field `func() Iface` whose interface result's method sigs are not yet

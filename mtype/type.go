@@ -11,7 +11,7 @@ import (
 	"unicode"
 	"unsafe"
 
-	"github.com/mvm-sh/mvm/internal/runtype"
+	"github.com/cogentcore/mvm/internal/runtype"
 )
 
 // Method records a method's code location and receiver path for interface dispatch.

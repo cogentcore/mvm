@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/mvm-sh/mvm/internal/derive"
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/internal/derive"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 // segOf builds a SegIndex over sm, as the Parser keeps in sync in production.

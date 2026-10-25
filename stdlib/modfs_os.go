@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/vm"
 )
 
 var moduleFS fs.FS // "modfs/" root that mvm's runtime.Caller reports for module-sourced frames.

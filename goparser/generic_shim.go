@@ -5,9 +5,9 @@ import (
 	"maps"
 	"sync"
 
-	"github.com/mvm-sh/mvm/mtype"
-	"github.com/mvm-sh/mvm/symbol"
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/mtype"
+	"github.com/cogentcore/mvm/symbol"
+	"github.com/cogentcore/mvm/vm"
 )
 
 // genericShim is one registered interpreted-source generic shim attached to

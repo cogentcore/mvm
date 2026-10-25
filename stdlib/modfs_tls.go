@@ -6,7 +6,7 @@ import (
 	"crypto/tls"
 	"reflect"
 
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/vm"
 )
 
 func init() {

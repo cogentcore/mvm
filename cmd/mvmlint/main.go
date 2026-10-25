@@ -1,5 +1,5 @@
 // Command mvmlint runs mvm's project-specific source checks over mvm's own Go
-// source, using mvm's own scanner (github.com/mvm-sh/mvm/scan) rather than the
+// source, using mvm's own scanner (github.com/cogentcore/mvm/scan) rather than the
 // Go AST or go/analysis. This keeps the tool dependency-free (no x/tools) and
 // dogfoods the scanner on the whole repository as a side effect.
 //
@@ -34,9 +34,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mvm-sh/mvm/lang"
-	"github.com/mvm-sh/mvm/lang/golang"
-	"github.com/mvm-sh/mvm/scan"
+	"github.com/cogentcore/mvm/lang"
+	"github.com/cogentcore/mvm/lang/golang"
+	"github.com/cogentcore/mvm/scan"
 )
 
 var sc = scan.NewScanner(golang.GoSpec)

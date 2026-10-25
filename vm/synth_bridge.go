@@ -7,11 +7,11 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/mvm-sh/mvm/internal/derive"
-	"github.com/mvm-sh/mvm/internal/runtype"
-	"github.com/mvm-sh/mvm/internal/stubs"
-	"github.com/mvm-sh/mvm/internal/wordabi"
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/internal/derive"
+	"github.com/cogentcore/mvm/internal/runtype"
+	"github.com/cogentcore/mvm/internal/stubs"
+	"github.com/cogentcore/mvm/internal/wordabi"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 // AttachSynthMethods fills t's interpreted methods into the synth rtype that was

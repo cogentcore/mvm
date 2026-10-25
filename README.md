@@ -1,7 +1,7 @@
 # mvm
 
-[![CI](https://github.com/mvm-sh/mvm/actions/workflows/go.yml/badge.svg)](https://github.com/mvm-sh/mvm/actions/workflows/go.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/mvm-sh/mvm.svg)](https://pkg.go.dev/github.com/mvm-sh/mvm)
+[![CI](https://github.com/cogentcore/mvm/actions/workflows/go.yml/badge.svg)](https://github.com/cogentcore/mvm/actions/workflows/go.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/cogentcore/mvm.svg)](https://pkg.go.dev/github.com/cogentcore/mvm)
 [![Compat](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/mvm-sh/mvm/main/compat/badge.json)](https://mvm.sh/compat)
 [![License: BSD-3-Clause](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
 
@@ -85,7 +85,7 @@ management and concurrency. Useful well beyond scripting.
 
 Install the `mvm` command:
 
-    go install github.com/mvm-sh/mvm@latest
+    go install github.com/cogentcore/mvm@latest
 
 Or from a clone of the repository:
 
@@ -95,7 +95,7 @@ go run . _samples/fib.go            # run a Go source file
 go run . run _samples/fib.go        # same. "run" is the default subcommand
 go run . run -e "fmt.Println(1+2)"  # evaluate an inline expression
 go run . run -x _samples/fib.go     # run with execution tracing
-go run . github.com/mvm-sh/mvm/cmd/mvmlint .  # fetch and run a remote main package
+go run . github.com/cogentcore/mvm/cmd/mvmlint .  # fetch and run a remote main package
 go run . test ./pkg                 # run TestX functions in a package directory
 go run . test ./pkg -v              # ... verbose; -run REGEX selects tests
 go run . test github.com/google/uuid  # fetch a remote module and run its tests
@@ -140,7 +140,7 @@ make lint    # golangci-lint
 
 ## Questions and discussions
 
-[GitHub Discussions](https://github.com/mvm-sh/mvm/discussions) is the
+[GitHub Discussions](https://github.com/cogentcore/mvm/discussions) is the
 preferred place to ask anything mvm-related: how to do something, whether
 a behavior is a bug or a misuse, or to float an idea for a new feature
 before it becomes an issue or a pull request.

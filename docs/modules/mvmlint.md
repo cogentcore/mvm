@@ -7,7 +7,7 @@
 
 `cmd/mvmlint` checks mvm's source for a small set of mvm-specific
 mistakes that `go vet` and `golangci-lint` cannot express.
-It parses with mvm's own scanner (`github.com/mvm-sh/mvm/scan`), not
+It parses with mvm's own scanner (`github.com/cogentcore/mvm/scan`), not
 `go/ast` or `go/analysis`, so the tool stays dependency-free (no
 `x/tools`) and dogfoods the scanner across the whole repository as a
 side effect.
@@ -17,7 +17,7 @@ side effect.
 
 ```
 go run ./cmd/mvmlint [dir ...]   # default: the whole module
-mvm github.com/mvm-sh/mvm/cmd/mvmlint .   # same, run through mvm itself
+mvm github.com/cogentcore/mvm/cmd/mvmlint .   # same, run through mvm itself
 ```
 
 It exits non-zero when any check fires, printing `file:line:col: message`

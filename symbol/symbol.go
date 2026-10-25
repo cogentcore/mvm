@@ -7,10 +7,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mvm-sh/mvm/internal/derive"
-	"github.com/mvm-sh/mvm/internal/runtype"
-	"github.com/mvm-sh/mvm/mtype"
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/internal/derive"
+	"github.com/cogentcore/mvm/internal/runtype"
+	"github.com/cogentcore/mvm/mtype"
+	"github.com/cogentcore/mvm/vm"
 )
 
 // Kind represents the symbol kind.

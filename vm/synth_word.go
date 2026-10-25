@@ -4,9 +4,9 @@ import (
 	"reflect"
 	"unsafe"
 
-	"github.com/mvm-sh/mvm/internal/stubs"
-	"github.com/mvm-sh/mvm/internal/wordabi"
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/internal/stubs"
+	"github.com/cogentcore/mvm/internal/wordabi"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 // Word-class synth dispatch (vm seam).

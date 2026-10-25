@@ -3,13 +3,13 @@
 Mvm is a free and open-source project, and your feedback and
 contributions are needed and always welcome.
 
-[Issues](https://github.com/mvm-sh/mvm/issues) and
-[pull requests](https://github.com/mvm-sh/mvm/pulls) are opened at
-<https://github.com/mvm-sh/mvm>.
+[Issues](https://github.com/cogentcore/mvm/issues) and
+[pull requests](https://github.com/cogentcore/mvm/pulls) are opened at
+<https://github.com/cogentcore/mvm>.
 
 If you are not sure something is a bug, or want to discuss a possible
 new feature before filing an issue, start a thread in
-[GitHub Discussions](https://github.com/mvm-sh/mvm/discussions).
+[GitHub Discussions](https://github.com/cogentcore/mvm/discussions).
 That is the preferred venue for mvm-related questions and for shaping a
 change before any code is written.
 

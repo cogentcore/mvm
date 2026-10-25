@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mvm-sh/mvm/mtype"
-	"github.com/mvm-sh/mvm/symbol"
+	"github.com/cogentcore/mvm/mtype"
+	"github.com/cogentcore/mvm/symbol"
 )
 
 // fileScopedAliasKey is the symbol-table key for an import alias scoped to the

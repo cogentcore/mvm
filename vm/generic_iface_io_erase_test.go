@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mvm-sh/mvm/internal/derive"
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/internal/derive"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 // A generic-instance iface param (name has '#') erases to interface{} even when

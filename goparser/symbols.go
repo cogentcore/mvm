@@ -5,11 +5,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mvm-sh/mvm/internal/derive"
-	"github.com/mvm-sh/mvm/lang"
-	"github.com/mvm-sh/mvm/mtype"
-	"github.com/mvm-sh/mvm/symbol"
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/internal/derive"
+	"github.com/cogentcore/mvm/lang"
+	"github.com/cogentcore/mvm/mtype"
+	"github.com/cogentcore/mvm/symbol"
+	"github.com/cogentcore/mvm/vm"
 )
 
 // blankName mints a unique throwaway name for a blank identifier. The '~' is

@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 // An Iface map key (e.g. protoreflect MapKey.Interface() across the native

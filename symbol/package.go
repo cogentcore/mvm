@@ -4,7 +4,7 @@ import (
 	"go/constant"
 	"reflect"
 
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/vm"
 )
 
 // Package is a package struct containing source or binary values.

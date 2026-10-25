@@ -9,7 +9,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/mvm-sh/mvm/lang"
+	"github.com/cogentcore/mvm/lang"
 )
 
 // Error definitions.

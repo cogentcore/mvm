@@ -13,7 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/mvm-sh/mvm/scan"
+	"github.com/cogentcore/mvm/scan"
 )
 
 // DebugInfo holds symbolic information for annotating debug output.

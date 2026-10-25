@@ -8,7 +8,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/vm"
 )
 
 // frameKey is the dedup key for sentinelByFrame.
@@ -207,7 +207,7 @@ func hostTailFrames() []runtime.Frame {
 // isHostBoundary reports whether name belongs to the mvm/reflect bridge that
 // sits between the interpreted stack and its genuine host caller.
 func isHostBoundary(name string) bool {
-	return strings.HasPrefix(name, "github.com/mvm-sh/mvm/") ||
+	return strings.HasPrefix(name, "github.com/cogentcore/mvm/") ||
 		strings.HasPrefix(name, "reflect.") ||
 		strings.HasPrefix(name, "main.")
 }

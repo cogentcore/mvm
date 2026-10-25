@@ -6,7 +6,7 @@ import (
 	"path"
 	"reflect"
 
-	"github.com/mvm-sh/mvm/internal/derive"
+	"github.com/cogentcore/mvm/internal/derive"
 )
 
 // Interpreted log.Logger's synth out io.Writer field would erase to interface{};

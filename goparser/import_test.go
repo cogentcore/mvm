@@ -5,7 +5,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/mvm-sh/mvm/lang/golang"
+	"github.com/cogentcore/mvm/lang/golang"
 )
 
 func TestExtractImports(t *testing.T) {

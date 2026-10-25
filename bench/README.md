@@ -57,4 +57,4 @@ Re-run on your own machine for an apples-to-apples comparison.
 }
 ```
 
-[page]: https://github.com/mvm-sh/mvm-sh.github.io/blob/main/bench/index.html
+[page]: https://github.com/cogentcore/mvm-sh.github.io/blob/main/bench/index.html

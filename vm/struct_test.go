@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mvm-sh/mvm/internal/derive"
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/internal/derive"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 // These tests cover the post-flip flow: NewStructType yields a symbolic

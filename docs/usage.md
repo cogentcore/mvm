@@ -9,7 +9,7 @@ see [`examples/`](../examples/).
 ## Install
 
 ```
-go install github.com/mvm-sh/mvm@latest
+go install github.com/cogentcore/mvm@latest
 ```
 
 Or run it straight from a clone of the repository with `go run .` in place of
@@ -35,7 +35,7 @@ mvm run _samples/fib.go             # run a Go source file
 mvm _samples/fib.go                 # same; "run" is the default
 mvm run -e "fmt.Println(1+2)"       # evaluate an inline expression
 mvm run -x _samples/fib.go          # run with line tracing (see below)
-mvm github.com/mvm-sh/mvm/cmd/mvmlint .  # fetch and run a remote main package
+mvm github.com/cogentcore/mvm/cmd/mvmlint .  # fetch and run a remote main package
 ```
 
 - **Source file.** The file is read and executed like `go run`.
@@ -318,7 +318,7 @@ and forwards any trailing arguments as the program's `os.Args`.
 
 ```
 mvm test github.com/google/uuid                              # whole package, run its tests
-mvm github.com/mvm-sh/mvm/cmd/mvmlint .                      # fetch and run a remote main package
+mvm github.com/cogentcore/mvm/cmd/mvmlint .                      # fetch and run a remote main package
 mvm run -e 'import "github.com/google/uuid"; println(uuid.NewString())'   # pull a dependency on the fly
 ```
 

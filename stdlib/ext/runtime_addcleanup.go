@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"runtime"
 
-	"github.com/mvm-sh/mvm/stdlib"
+	"github.com/cogentcore/mvm/stdlib"
 )
 
 // runtime.AddCleanup is generic, so cmd/extract can't reflect.ValueOf it; this shim monomorphizes it.

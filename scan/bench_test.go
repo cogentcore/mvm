@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mvm-sh/mvm/lang/golang"
-	"github.com/mvm-sh/mvm/scan"
+	"github.com/cogentcore/mvm/lang/golang"
+	"github.com/cogentcore/mvm/scan"
 )
 
 var benchScanner = scan.NewScanner(golang.GoSpec)

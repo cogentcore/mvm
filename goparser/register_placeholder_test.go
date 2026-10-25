@@ -3,7 +3,7 @@ package goparser
 import (
 	"testing"
 
-	"github.com/mvm-sh/mvm/lang/golang"
+	"github.com/cogentcore/mvm/lang/golang"
 )
 
 // registerStructPlaceholder must reuse one *Type across a same-compile fixpoint

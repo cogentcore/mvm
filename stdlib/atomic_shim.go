@@ -1,6 +1,6 @@
 package stdlib
 
-import "github.com/mvm-sh/mvm/goparser"
+import "github.com/cogentcore/mvm/goparser"
 
 // atomicGenericShim defines atomic.Pointer[T], which is generic and so can't be reflect-bridged.
 // It is built on the bridged {Load,Store,Swap,CompareAndSwap}Pointer functions, matching upstream.

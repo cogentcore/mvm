@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 // Regression for `mvm test gorm.io/gorm`: clause.Clause has a func field of type

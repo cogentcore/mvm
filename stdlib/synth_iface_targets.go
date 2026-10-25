@@ -4,7 +4,7 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/vm"
 )
 
 // Allowlist callees that may retype a pointer-to-interpreted-interface argument

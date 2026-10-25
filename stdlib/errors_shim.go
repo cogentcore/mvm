@@ -1,6 +1,6 @@
 package stdlib
 
-import "github.com/mvm-sh/mvm/goparser"
+import "github.com/cogentcore/mvm/goparser"
 
 // errorsGenericShim provides an interpreted definition of errors.AsType, the
 // go1.26 generic that cannot be expressed as a reflect.ValueOf binding (the

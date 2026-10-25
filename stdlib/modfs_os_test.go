@@ -15,7 +15,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/vm"
 )
 
 func TestReadFileModfs(t *testing.T) {

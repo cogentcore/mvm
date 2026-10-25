@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mvm-sh/mvm/internal/runtype"
+	"github.com/cogentcore/mvm/internal/runtype"
 )
 
 // TestDerivedFmtStringer: a derived []T over a synth struct whose elem carries

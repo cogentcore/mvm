@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mvm-sh/mvm/goparser"
-	"github.com/mvm-sh/mvm/symbol"
+	"github.com/cogentcore/mvm/goparser"
+	"github.com/cogentcore/mvm/symbol"
 )
 
 // autoImportPreferred maps an ambiguous short package name to the canonical

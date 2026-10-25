@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mvm-sh/mvm/lang"
-	"github.com/mvm-sh/mvm/mtype"
-	"github.com/mvm-sh/mvm/symbol"
+	"github.com/cogentcore/mvm/lang"
+	"github.com/cogentcore/mvm/mtype"
+	"github.com/cogentcore/mvm/symbol"
 )
 
 // parseExpr transforms an infix expression into a postfix notation.

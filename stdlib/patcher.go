@@ -1,6 +1,6 @@
 package stdlib
 
-import "github.com/mvm-sh/mvm/vm"
+import "github.com/cogentcore/mvm/vm"
 
 // PackagePatcher mutates a package's exported values at interpreter
 // startup. m is the live VM; values is the package's vm.Value symbol

@@ -1,6 +1,6 @@
 package stdlib
 
-import "github.com/mvm-sh/mvm/goparser"
+import "github.com/cogentcore/mvm/goparser"
 
 // reflectGenericShim provides interpreted definitions for reflect symbols
 // that cannot be expressed as a single reflect.ValueOf binding (they are

@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mvm-sh/mvm/internal/runtype"
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/internal/runtype"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 // namedRtype builds a distinct named struct rtype over layout, mirroring how

@@ -3,8 +3,8 @@ package interp
 import (
 	"fmt"
 
-	"github.com/mvm-sh/mvm/mtype"
-	"github.com/mvm-sh/mvm/symbol"
+	"github.com/cogentcore/mvm/mtype"
+	"github.com/cogentcore/mvm/symbol"
 )
 
 // attachErr locates a synth-attach failure at the type's declaration.

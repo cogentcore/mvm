@@ -6,7 +6,7 @@ import (
 	"crypto/rand"
 	"reflect"
 
-	"github.com/mvm-sh/mvm/stdlib"
+	"github.com/cogentcore/mvm/stdlib"
 )
 
 func init() {

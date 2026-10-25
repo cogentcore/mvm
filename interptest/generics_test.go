@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mvm-sh/mvm/interp"
-	"github.com/mvm-sh/mvm/lang/golang"
-	"github.com/mvm-sh/mvm/modfs"
-	"github.com/mvm-sh/mvm/stdlib"
-	_ "github.com/mvm-sh/mvm/stdlib/all"
+	"github.com/cogentcore/mvm/interp"
+	"github.com/cogentcore/mvm/lang/golang"
+	"github.com/cogentcore/mvm/modfs"
+	"github.com/cogentcore/mvm/stdlib"
+	_ "github.com/cogentcore/mvm/stdlib/all"
 )
 
 // Inside a non-main package, `fn := func(any) any {...}; generic(i, fn)`

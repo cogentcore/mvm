@@ -4,9 +4,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mvm-sh/mvm/lang/golang"
-	"github.com/mvm-sh/mvm/mtype"
-	"github.com/mvm-sh/mvm/symbol"
+	"github.com/cogentcore/mvm/lang/golang"
+	"github.com/cogentcore/mvm/mtype"
+	"github.com/cogentcore/mvm/symbol"
 )
 
 // registerType must key a composite-literal type of a FOREIGN package under that

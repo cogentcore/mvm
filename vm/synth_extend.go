@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"unsafe"
 
-	"github.com/mvm-sh/mvm/internal/stubs"
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/internal/stubs"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 // SynthCall bundles one synth method dispatch so an out-of-vm shape handler can

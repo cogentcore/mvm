@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mvm-sh/mvm/stdlib"
-	"github.com/mvm-sh/mvm/stdlib/stdmod"
+	"github.com/cogentcore/mvm/stdlib"
+	"github.com/cogentcore/mvm/stdlib/stdmod"
 )
 
 func TestRewriteTestFlags(t *testing.T) {

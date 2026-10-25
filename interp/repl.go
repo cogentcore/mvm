@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/mvm-sh/mvm/scan"
+	"github.com/cogentcore/mvm/scan"
 )
 
 // Repl executes an interactive line oriented Read Eval Print Loop (REPL).

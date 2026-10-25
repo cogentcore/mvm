@@ -3,7 +3,7 @@
 package stubs
 
 import (
-	"github.com/mvm-sh/mvm/internal/runtype"
+	"github.com/cogentcore/mvm/internal/runtype"
 )
 
 // FillMethods installs methods into a reserved rtype, claiming a stub slot each.

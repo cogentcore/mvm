@@ -1,7 +1,7 @@
 // Package golang provides the lexical specification of Go language.
 package golang
 
-import "github.com/mvm-sh/mvm/lang"
+import "github.com/cogentcore/mvm/lang"
 
 // GoSpec contains the lexical specification of Go.
 var GoSpec = &lang.Spec{

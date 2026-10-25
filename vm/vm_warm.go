@@ -5,9 +5,9 @@ import (
 	"iter"
 	"reflect"
 
-	"github.com/mvm-sh/mvm/internal/derive"
-	"github.com/mvm-sh/mvm/internal/runtype"
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/internal/derive"
+	"github.com/cogentcore/mvm/internal/runtype"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 // coldCtl tells runLoop what to do after runWarm or runCold ran an opcode.

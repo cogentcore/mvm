@@ -401,7 +401,7 @@ external modules now pass their full upstream suite, newly including
   See ADR-018.
 - `cmd/mvmlint`, a small linter for mvm-specific code patterns.
   Runs locally or as a remote main package
-  (`mvm github.com/mvm-sh/mvm/cmd/mvmlint .`).
+  (`mvm github.com/cogentcore/mvm/cmd/mvmlint .`).
 - Standard-library bridges for `encoding/gob`.
 - `encoding/xml` round-trips through the new `xmlx` shim.
   Interpreted types implementing `xml.Marshaler`/`xml.Unmarshaler` and

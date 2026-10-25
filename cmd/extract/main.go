@@ -26,10 +26,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mvm-sh/mvm/goparser"
-	"github.com/mvm-sh/mvm/lang/golang"
-	"github.com/mvm-sh/mvm/symbol"
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/goparser"
+	"github.com/cogentcore/mvm/lang/golang"
+	"github.com/cogentcore/mvm/symbol"
+	"github.com/cogentcore/mvm/vm"
 )
 
 const usageText = `extract emits Go bindings from a package's exported symbols.
@@ -438,7 +438,7 @@ func writeBinding(path, importPath, buildTag string, supplement bool, values, va
 			w("\t%q\n", importPath)
 		}
 		w("\t\"reflect\"\n")
-		w("\n\t\"github.com/mvm-sh/mvm/stdlib\"\n")
+		w("\n\t\"github.com/cogentcore/mvm/stdlib\"\n")
 		w(")\n")
 		w("\nfunc init() {\n")
 		if supplement {

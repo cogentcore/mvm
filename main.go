@@ -13,13 +13,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mvm-sh/mvm/internal/stubs"
-	"github.com/mvm-sh/mvm/interp"
-	"github.com/mvm-sh/mvm/modfs"
-	"github.com/mvm-sh/mvm/stdlib"
-	_ "github.com/mvm-sh/mvm/stdlib/all"
-	"github.com/mvm-sh/mvm/stdlib/stdmod"
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/internal/stubs"
+	"github.com/cogentcore/mvm/interp"
+	"github.com/cogentcore/mvm/modfs"
+	"github.com/cogentcore/mvm/stdlib"
+	_ "github.com/cogentcore/mvm/stdlib/all"
+	"github.com/cogentcore/mvm/stdlib/stdmod"
+	"github.com/cogentcore/mvm/vm"
 )
 
 // poolStatsReport formats each stub pool's slot high-water against its

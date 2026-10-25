@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mvm-sh/mvm/scan"
+	"github.com/cogentcore/mvm/scan"
 )
 
 func TestDumpFrame(t *testing.T) {

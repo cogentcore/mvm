@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mvm-sh/mvm/mtype"
+	"github.com/cogentcore/mvm/mtype"
 )
 
 // Unboxing through a pointer must keep the SAME pointer (in-place), or a

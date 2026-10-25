@@ -1,6 +1,6 @@
 package stdlib
 
-import "github.com/mvm-sh/mvm/goparser"
+import "github.com/cogentcore/mvm/goparser"
 
 // maps.Clone delegates to an unexported `clone(m any) any` //go:linkname'd to a
 // runtime intrinsic mvm can't resolve. This overlay fills that forward-declared

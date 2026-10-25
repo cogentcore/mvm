@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mvm-sh/mvm/internal/derive"
-	"github.com/mvm-sh/mvm/internal/wordabi"
+	"github.com/cogentcore/mvm/internal/derive"
+	"github.com/cogentcore/mvm/internal/wordabi"
 )
 
 // globalMethodStructs is the wasm-only cross-machine cache of method-bearing
