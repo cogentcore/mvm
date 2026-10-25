@@ -188,7 +188,7 @@ package <-pkg>
 import (
     p_<path> "<importPath>"
     "reflect"
-    "github.com/mvm-sh/mvm/goparser"
+    "github.com/cogentcore/mvm/goparser"
 )
 
 var _ = register(func() {

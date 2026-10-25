@@ -24,7 +24,7 @@ import (
 
 // goparserPath is the import path of the goparser package, which the
 // generated files use to register generic shims.
-const goparserPath = "github.com/mvm-sh/mvm/goparser"
+const goparserPath = "github.com/cogentcore/mvm/goparser"
 
 // regPkg is a package loaded for the -register mode: its syntax and types.
 type regPkg struct {
