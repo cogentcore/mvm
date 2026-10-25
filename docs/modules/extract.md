@@ -188,11 +188,11 @@ package <-pkg>
 import (
     p_<path> "<importPath>"
     "reflect"
-    "github.com/cogentcore/mvm/goparser"
+    "github.com/cogentcore/mvm/genshim"
 )
 
 var _ = register(func() {
-    goparser.RegisterGenericShim("<importPath>", `<source>`, []string{...})
+    genshim.Register("<importPath>", `<source>`, []string{...})
     add(map[string]map[string]reflect.Value{
         "<importPath>": {
             "Sym": reflect.ValueOf(p_<path>.Sym),
@@ -208,7 +208,10 @@ loaders when the symbols are first needed. Making the bindings of many
 packages at init time is a noticeable part of the startup time of a web
 app, where they may never be used.
 
-The shim source has the generic functions of the package, and the
+The shims are registered with package `genshim`, which goparser reads when
+it imports the bindings, and which depends only on the standard library, so
+that a program that imports the bindings without interpreting code does not
+link the parser. The shim source has the generic functions of the package, and the
 constraint interfaces that they use; the names of the package that it
 refers to are listed after it, and the shim gets them from the bindings. A
 generic function that refers to an unexported name of the package is left

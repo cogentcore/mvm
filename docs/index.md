@@ -24,7 +24,8 @@ packages.
 - [stdmod](modules/stdmod.md) -- redirect FS that routes stdlib imports through the
   synthetic `github.com/mvm-sh/std` module
 - [modfs](modules/modfs.md) -- in-memory `fs.FS` over the Go module proxy for dynamic network imports
-- [cmd/extract](modules/extract.md) -- generator for stdlib binding files
+- [cmd/extract](modules/extract.md) -- generator for stdlib binding files, and for lazily loaded bindings of other packages with generic shims
+- [genshim](modules/genshim.md) -- dependency-free registry of the generic shims of packages of native bindings
 - [cmd/mvmlint](modules/mvmlint.md) -- project-specific source linter built on mvm's own scanner
 
 ## Architecture
