@@ -39,6 +39,17 @@ func (seen *unboxSeen) seenBefore(ptr uintptr, t reflect.Type) bool {
 	return false
 }
 
+// nativeNamed reports whether t is a named type that the interpreter did not
+// make, a type of a native package. The memory of a value of such a type
+// holds no boxes, so the walk does not enter it: native code writes only
+// values that were unboxed when they reached it, and interpreted code writes
+// its fields through setFuncField, which unboxes. Entering it would walk all
+// that it reaches at each native call, such as the whole widget tree of a
+// GUI from any one widget.
+func (m *Machine) nativeNamed(t reflect.Type) bool {
+	return t.Name() != "" && !isSynthOrSynthPtr(t) && m.typeByRtype(t) == nil
+}
+
 // ifaceBearing reports whether values of type t can contain an interface slot.
 func ifaceBearing(t reflect.Type) bool {
 	if v, ok := ifaceBearingCache.Load(t); ok {
@@ -81,12 +92,6 @@ func ifaceBearingWalk(t reflect.Type, seen map[reflect.Type]bool) bool {
 // finds no boxes and races a concurrent writer (a "concurrent map iteration and
 // map write" fatal).
 const maxMapHops = 1
-
-// maxPtrHops gates pointer and slice traversal by heap-indirection depth
-// likewise: the boxes of an argument are near it, while walking all that a
-// pointer reaches, such as the whole widget tree of a GUI from one widget,
-// at each native call makes building a large graph quadratic.
-const maxPtrHops = 4
 
 // deepUnboxIface returns v with nested vm.Iface boxes replaced by their
 // concrete values, so native reflect walks (DeepEqual, fmt) see real Go values.
@@ -146,7 +151,7 @@ func (m *Machine) deepUnboxIface(v reflect.Value, depth, hops int, seen *unboxSe
 		}
 		return v, false
 	case reflect.Slice:
-		if v.IsNil() || !ifaceBearing(t) || hops > maxPtrHops {
+		if v.IsNil() || !ifaceBearing(t) {
 			return v, false
 		}
 		if seen.seenBefore(v.Pointer(), t) {
@@ -184,7 +189,7 @@ func (m *Machine) deepUnboxIface(v reflect.Value, depth, hops int, seen *unboxSe
 		}
 		return out, true
 	case reflect.Struct:
-		if !ifaceBearing(t) {
+		if !ifaceBearing(t) || m.nativeNamed(t) {
 			return v, false
 		}
 		var out reflect.Value
@@ -206,7 +211,7 @@ func (m *Machine) deepUnboxIface(v reflect.Value, depth, hops int, seen *unboxSe
 		}
 		return out, true
 	case reflect.Pointer:
-		if v.IsNil() || !ifaceBearing(t) || hops > maxPtrHops {
+		if v.IsNil() || !ifaceBearing(t) || m.nativeNamed(t.Elem()) {
 			return v, false
 		}
 		if seen.seenBefore(v.Pointer(), t) {
