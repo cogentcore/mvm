@@ -2615,6 +2615,10 @@ func (m *Machine) reflectForSend(val Value, elemType reflect.Type) reflect.Value
 		return m.wrapForFunc(val, elemType)
 	}
 	if elemType.Kind() == reflect.Interface && val.IsIface() {
+		// The value is unboxed as a store into a field is (see setFuncField).
+		if w, ok := m.unboxIfaceFor(val, elemType); ok {
+			return w
+		}
 		if elemType == mtype.AnyRtype {
 			return val.Reflect()
 		}
@@ -3890,7 +3894,15 @@ func (m *Machine) unboxIfaceFor(val Value, dst reflect.Type) (reflect.Value, boo
 	}
 	iv := val.IfaceVal()
 	// Unwrap Iface for native types so reflect-based code sees raw Go values.
-	keepInterpreted := iv.Typ.Name != "" && iv.Typ.Name != iv.Typ.Rtype.Name()
+	// An interpreted named type whose rtype does not identify it, such as a
+	// methodless named type with the rtype of its underlying type, keeps the
+	// box, for its identity. The *Type of a pointer has the name of its
+	// element, so a pointer is not one; nor is a type whose rtype the machine
+	// maps back to it, as a generic instance, whose name is spelled
+	// differently (Map#string#int, Map[string,int]).
+	keepInterpreted := iv.Typ.Name != "" && iv.Typ.Rtype.Kind() != reflect.Pointer &&
+		iv.Typ.Name != iv.Typ.Rtype.Name() && !isSynthOrSynthPtr(iv.Typ.Rtype) &&
+		m.typeByRtype(iv.Typ.Rtype) == nil
 	// Also keep a pointer to an interpreted interface.
 	if !keepInterpreted && iv.Typ.Rtype.Kind() == reflect.Pointer &&
 		iv.Typ.ElemType != nil && iv.Typ.ElemType.Rtype.Kind() == reflect.Interface &&
