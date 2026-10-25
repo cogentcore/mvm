@@ -164,6 +164,7 @@ func registerFile(pkg *regPkg, pkgName string) ([]byte, error) {
 	// The values of the exported names, and the generic functions and the
 	// constraints, which are shim source.
 	var values []string
+	bound := map[string]bool{}
 	var generics []string
 	constraints := map[string]bool{}
 	for _, name := range scope.Names() {
@@ -172,6 +173,7 @@ func registerFile(pkg *regPkg, pkgName string) ([]byte, error) {
 			continue
 		}
 		q := alias + "." + name
+		nvalues := len(values)
 		switch obj := obj.(type) {
 		case *types.Func:
 			if obj.Type().(*types.Signature).TypeParams().Len() > 0 {
@@ -189,8 +191,10 @@ func registerFile(pkg *regPkg, pkgName string) ([]byte, error) {
 					continue
 				}
 			}
-			if named, ok := obj.Type().(*types.Named); ok && named.TypeParams().Len() > 0 {
-				continue // generic types are not supported
+			// Generic types are not supported, but instances of them, which
+			// an alias can name, are.
+			if named, ok := obj.Type().(*types.Named); ok && named.TypeParams().Len() > 0 && named.TypeArgs().Len() == 0 {
+				continue
 			}
 			if iface, ok := obj.Type().Underlying().(*types.Interface); ok && !iface.IsMethodSet() {
 				constraints[name] = true
@@ -198,9 +202,12 @@ func registerFile(pkg *regPkg, pkgName string) ([]byte, error) {
 			}
 			values = append(values, fmt.Sprintf("%q: reflect.ValueOf((*%s)(nil)),", name, q))
 		}
+		if len(values) > nvalues {
+			bound[name] = true
+		}
 	}
 
-	shim, refs, err := shimSource(pkg, generics, constraints)
+	shim, refs, err := shimSource(pkg, generics, constraints, bound)
 	if err != nil {
 		return nil, err
 	}
@@ -249,9 +256,11 @@ func backquote(s string) string {
 // shimSource returns the source of the shim of the generic functions of pkg
 // named generics, with the declarations of the constraints that they use,
 // and the names of the package that the source refers to, which the shim
-// gets from the values of the package. A generic function that refers to an
-// unexported name of the package is left out, as it could not be resolved.
-func shimSource(pkg *regPkg, generics []string, constraints map[string]bool) (string, []string, error) {
+// gets from the values of the package, bound. A generic function that refers
+// to a name of the package that is neither bound nor in the shim, such as an
+// unexported name or a generic type, is left out, as it could not be
+// resolved.
+func shimSource(pkg *regPkg, generics []string, constraints, bound map[string]bool) (string, []string, error) {
 	if len(generics) == 0 {
 		return "", nil, nil
 	}
@@ -279,7 +288,6 @@ func shimSource(pkg *regPkg, generics []string, constraints map[string]bool) (st
 	type uses struct {
 		names   map[string]bool
 		imports map[string]string // import path by package name
-		bad     bool
 	}
 	use := func(d ast.Decl) uses {
 		u := uses{names: map[string]bool{}, imports: map[string]string{}}
@@ -294,9 +302,6 @@ func shimSource(pkg *regPkg, generics []string, constraints map[string]bool) (st
 			case nil:
 			default:
 				if obj.Pkg() == pkg.types && obj.Parent() == scope {
-					if !obj.Exported() {
-						u.bad = true
-					}
 					u.names[obj.Name()] = true
 				}
 			}
@@ -304,24 +309,45 @@ func shimSource(pkg *regPkg, generics []string, constraints map[string]bool) (st
 		})
 		return u
 	}
+	var names []string
+	declUses := map[string]uses{}
+	for name, d := range decls {
+		names = append(names, name)
+		declUses[name] = use(d)
+	}
+	slices.Sort(names)
 
-	// The generic functions and constraints, without those that refer to
-	// unexported names, and the names and imports of those kept.
+	// Leave out the declarations that refer to names that are neither bound
+	// nor kept, until all of those kept refer only to such names, as leaving
+	// one out can leave out those that refer to it.
+	for changed := true; changed; {
+		changed = false
+		for _, name := range names {
+			if decls[name] == nil {
+				continue
+			}
+			for n := range declUses[name].names {
+				if n != name && !bound[n] && decls[n] == nil {
+					log.Printf("%s: leaving out %s, which uses %s, which is not bound", pkg.path, name, n)
+					delete(decls, name)
+					changed = true
+					break
+				}
+			}
+		}
+	}
+
+	// The generic functions and constraints kept, and the names and imports
+	// that they use.
 	var srcs []string
 	refs := map[string]bool{}
 	imports := map[string]string{}
-	var names []string
-	for name := range decls {
-		names = append(names, name)
-	}
-	slices.Sort(names)
 	for _, name := range names {
 		d := decls[name]
-		u := use(d)
-		if u.bad {
-			log.Printf("%s: leaving out %s, which uses unexported names", pkg.path, name)
+		if d == nil {
 			continue
 		}
+		u := declUses[name]
 		var b bytes.Buffer
 		if fd, ok := d.(*ast.FuncDecl); ok {
 			fd.Doc = nil
