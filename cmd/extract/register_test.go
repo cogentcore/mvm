@@ -22,7 +22,7 @@ func TestRegister(t *testing.T) {
 	for _, want := range []string{
 		"package symbols",
 		"var _ = register(func() {",
-		`goparser.RegisterGenericShim("cmp",`,
+		`genshim.Register("cmp",`,
 		"func Or[T comparable](vals ...T) T {",
 		"type Ordered interface {",
 		`add(map[string]map[string]reflect.Value{`,

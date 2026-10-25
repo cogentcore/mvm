@@ -22,9 +22,10 @@ import (
 	"strings"
 )
 
-// goparserPath is the import path of the goparser package, which the
-// generated files use to register generic shims.
-const goparserPath = "github.com/mvm-sh/mvm/goparser"
+// genshimPath is the import path of the genshim package, with which the
+// generated files register generic shims. It depends only on the standard
+// library, unlike goparser.
+const genshimPath = "github.com/mvm-sh/mvm/genshim"
 
 // regPkg is a package loaded for the -register mode: its syntax and types.
 type regPkg struct {
@@ -54,8 +55,8 @@ type listPkg struct {
 // own, gen_<import-path>.go in the current directory, of package pkgName.
 // Each file registers a loader with register that adds the values of the
 // exported names of the package with add, and registers the generic
-// functions of the package as goparser generic shims, whose source mvm
-// interprets. The package of the files must define register and add:
+// functions of the package as generic shims (package genshim), whose source
+// mvm interprets. The package of the files must define register and add:
 //
 //	func register(loader func()) bool
 //	func add(pkgs map[string]map[string]reflect.Value)
@@ -219,11 +220,11 @@ func registerFile(pkg *regPkg, pkgName string) ([]byte, error) {
 	}
 	b.WriteString("\t\"reflect\"\n")
 	if shim != "" {
-		fmt.Fprintf(&b, "\t%q\n", goparserPath)
+		fmt.Fprintf(&b, "\t%q\n", genshimPath)
 	}
 	b.WriteString(")\n\nvar _ = register(func() {\n")
 	if shim != "" {
-		fmt.Fprintf(&b, "goparser.RegisterGenericShim(%q, %s, %#v)\n", pkg.path, backquote(shim), refs)
+		fmt.Fprintf(&b, "genshim.Register(%q, %s, %#v)\n", pkg.path, backquote(shim), refs)
 	}
 	fmt.Fprintf(&b, "add(map[string]map[string]reflect.Value{\n%q: {\n", pkg.path)
 	for _, v := range values {
