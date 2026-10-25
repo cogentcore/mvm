@@ -22,7 +22,11 @@ type structEmbedKey struct {
 }
 
 // structEmbedIfaceCache memoizes the synth rtype per key.
-var structEmbedIfaceCache sync.Map // structEmbedKey -> reflect.Type
+var structEmbedIfaceCache sync.Map // structEmbedKey -> synthRtype
+
+// synthRtype holds a reflect.Type in structEmbedIfaceCache, asserted as a
+// struct, since an assertion to reflect.Type fails under goscript.
+type synthRtype struct{ t reflect.Type }
 
 func (m *Machine) bridgeStructEmbedIface(rv reflect.Value, target reflect.Type) reflect.Value {
 	if !rv.IsValid() || rv.Kind() != reflect.Struct ||
@@ -41,10 +45,10 @@ func (m *Machine) bridgeStructEmbedIface(rv reflect.Value, target reflect.Type) 
 	key := structEmbedKey{layout, target, fieldIdx}
 	var synthRT reflect.Type
 	if e, ok := structEmbedIfaceCache.Load(key); ok {
-		synthRT, _ = e.(reflect.Type)
+		synthRT = e.(synthRtype).t
 	} else {
 		synthRT = m.buildStructEmbedSynth(layout, target, fieldIdx)
-		structEmbedIfaceCache.Store(key, synthRT)
+		structEmbedIfaceCache.Store(key, synthRtype{synthRT})
 	}
 	if synthRT == nil {
 		return reflect.Value{}
