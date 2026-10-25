@@ -4413,7 +4413,7 @@ func (m *Machine) bridgeIface(ifc Iface, targetType reflect.Type) reflect.Value 
 			return sv
 		}
 	}
-	if synthSharedPC && targetType != nil && targetType.Kind() == reflect.Interface && val.IsValid() {
+	if synthSharedPC && !synthJSMethods && targetType != nil && targetType.Kind() == reflect.Interface && val.IsValid() {
 		// Reader/Writer only: a native sink dispatches the method, so the shim is
 		// needed. error/Stringer must keep concrete identity here -- they reach a
 		// native callee that introspects the type (errors.As, reflect), and their
@@ -4888,7 +4888,7 @@ func (m *Machine) unwrapVariadicIface(last reflect.Value) reflect.Value {
 		if ifc, ok := elem.Interface().(Iface); ok {
 			inner, boxed = ifc.Val.Reflect(), true
 		}
-		if synthSharedPC && inner.IsValid() {
+		if synthSharedPC && !synthJSMethods && inner.IsValid() {
 			// Variadic (fmt) path: dispatch the method, so wrap error/Stringer too.
 			if w, ok := m.wrapSynthIfaceForNative(inner.Type(), elem.Type(), inner, false); ok {
 				elem.Set(w)

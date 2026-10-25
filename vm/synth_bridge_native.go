@@ -33,3 +33,11 @@ func mvmEfaceInSynthSlot(v reflect.Value, t reflect.Type) (Iface, bool) {
 	ifc, ok := reflect.NewAt(mtype.AnyRtype, p).Elem().Interface().(Iface)
 	return ifc, ok
 }
+
+// synthJSMethods reports that native code dispatches the methods of synth
+// types directly, as JavaScript methods of their values (goscript only).
+const synthJSMethods = false
+
+// synthMethodHandler returns nil: native targets dispatch interpreted methods
+// through stub pools, and wasm does not dispatch them natively.
+func synthMethodHandler(m *Machine, t *mtype.Type, s synthMethodSpec) any { return nil }

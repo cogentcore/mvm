@@ -39,3 +39,11 @@ func SetFieldType(t reflect.Type, i int, ft reflect.Type) { panic(errNative) }
 func SetFieldEmbedded(t reflect.Type, i int, name, tag string, exported bool) {
 	panic(errNative)
 }
+
+// SetMethod installs the method name, of signature sig (without receiver), on
+// the values of the named type t, so that calling it calls fn with a pointer
+// to the value and the arguments. ptrRecv is whether only *t has the method.
+func SetMethod(t reflect.Type, name string, sig reflect.Type, ptrRecv bool,
+	fn func(recv reflect.Value, args []reflect.Value) []reflect.Value) {
+	panic(errNative)
+}

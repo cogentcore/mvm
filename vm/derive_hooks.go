@@ -44,6 +44,10 @@ func IfaceShapeReport() string {
 func init() {
 	derive.ShareMethodCarriers = synthSharedPC
 	derive.ShapeAvailable = func(sig reflect.Type) bool {
+		// goscript dispatches a method of any signature (synthJSMethods).
+		if synthJSMethods {
+			return true
+		}
 		if _, ok := detectShape(sig); ok {
 			return true
 		}

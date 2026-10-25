@@ -339,6 +339,7 @@ func toSynthMethods(
 				Exported: derive.IsExportedName(s.name),
 				PkgPath:  s.pkgName,
 				Sig:      s.method.Rtype,
+				Handler:  synthMethodHandler(m, t, s),
 			}
 			continue
 		}

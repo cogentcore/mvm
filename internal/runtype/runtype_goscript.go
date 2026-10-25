@@ -8,8 +8,9 @@ package runtype
 // internal/gsreflect. Sizes and layouts are computed by goscript reflect on
 // demand, so there is no layout or geometry to maintain.
 //
-// Interpreted methods are recorded but not installed: native code does not
-// see the methods of interpreted types (the vm dispatches them itself).
+// The methods of a named type are installed as JavaScript methods of its
+// values, which call their MethodSpec.Handler, so native code dispatches them
+// directly (see gsreflect.SetMethod).
 
 import (
 	"errors"
@@ -29,7 +30,14 @@ type MethodSpec struct {
 	PkgPath  string // declaring package for an unexported method
 	Sig      reflect.Type
 	StubPC   uintptr
+
+	// Handler, a MethodFunc, runs the method for native callers.
+	Handler any
 }
+
+// MethodFunc runs an interpreted method with the receiver recv, a pointer
+// to the value, and the arguments args, returning its results.
+type MethodFunc = func(recv reflect.Value, args []reflect.Value) []reflect.Value
 
 // Imethod is one interface method: name, export status, and no-receiver
 // signature (e.g. func() bool for Timeout).
@@ -91,6 +99,24 @@ func (r *Reservation) Fill(methods []MethodSpec) error {
 	synthMu.Lock()
 	synthTypes[r.rt] = len(methods)
 	synthMu.Unlock()
+
+	// The methods of a named type, or of a pointer to one, are installed on
+	// the named type (see gsreflect.SetMethod). The pointer reservation is
+	// filled after the value one, so its methods that the value already has
+	// keep their value receiver.
+	st := r.rt
+	ptrRecv := st.Kind() == reflect.Pointer
+	if ptrRecv {
+		st = st.Elem()
+	}
+	if st.Name() == "" {
+		return nil
+	}
+	for _, m := range methods {
+		if fn, ok := m.Handler.(MethodFunc); ok && m.Exported {
+			gsreflect.SetMethod(st, m.Name, m.Sig, ptrRecv, fn)
+		}
+	}
 	return nil
 }
 
