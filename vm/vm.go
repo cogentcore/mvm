@@ -512,6 +512,14 @@ func (m *Machine) popIterStop() {
 	}
 }
 
+// hasIterFrames reports whether the range iterators include one of the
+// frame at fp, or of a deeper one, for dropIterFrames to drop. Returns check
+// it first, since under goscript a call of dropIterFrames suspends.
+func (m *Machine) hasIterFrames(fp int) bool {
+	n := len(m.iterStack)
+	return n > m.iterBase && m.iterStack[n-1].fp >= fp
+}
+
 func (m *Machine) dropIterFrames(fp int) {
 	for len(m.iterStack) > m.iterBase && m.iterStack[len(m.iterStack)-1].fp >= fp {
 		m.popIterStop()
@@ -698,6 +706,27 @@ func (m *Machine) traceStep(pos Pos, fp int, mem []Value) {
 	}
 	m.traceLastFile, m.traceLastLine = file, line
 	_, _ = fmt.Fprintf(m.err, "+ %s%s:%d: %s\n", traceIndent(mem, fp), file, line, di.Sources.LineText(int(pos)))
+}
+
+// execConvertNum is the numeric case of execConvert, which it runs and
+// reports whether it did. It never suspends under goscript, unlike
+// execConvert, so the Convert opcode tries it first.
+func (m *Machine) execConvertNum(c *Instruction, mem []Value, sp int) bool {
+	idx := sp - int(c.B)
+	v := mem[idx]
+	if !v.ref.IsValid() {
+		return false
+	}
+	dstType := m.globals[int(c.A)].ref.Type()
+	srcKind, dstKind := v.ref.Kind(), dstType.Kind()
+	if !isNum(srcKind) || !isNum(dstKind) {
+		return false
+	}
+	mem[idx] = Value{num: convertNum(v.num, srcKind, dstKind), ref: zeroOfKind(dstKind)}
+	if dstType.NumMethod() > 0 {
+		mem[idx].ref = reflect.Zero(dstType) // preserve named type identity.
+	}
+	return true
 }
 
 func (m *Machine) execConvert(c *Instruction, mem []Value, sp int) {
@@ -1384,7 +1413,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			frameBase := retFrameBase(retIPInfo)
 			ip = retIPOf(retIPInfo)
 			ofp := fp
-			if len(m.iterStack) != 0 {
+			if m.hasIterFrames(ofp) {
 				m.dropIterFrames(ofp) // early return out of a range loop skips Stop
 			}
 			fpVal := mem[fp-1].num
@@ -1487,7 +1516,9 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			mem[sp-1] = boolVal(mem[sp-1].Equal(mem[sp]))
 			sp--
 		case Convert:
-			m.execConvert(c, mem, sp)
+			if !m.execConvertNum(c, mem, sp) {
+				m.execConvert(c, mem, sp)
+			}
 
 		case Fnew:
 			if sp+1 >= len(mem) {
@@ -1770,7 +1801,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			// No pending defers: normal frame teardown.
 			ip = retIPOf(retIPInfo)
 			ofp := fp
-			if len(m.iterStack) != 0 {
+			if m.hasIterFrames(ofp) {
 				m.dropIterFrames(ofp) // early return out of a range loop skips Stop
 			}
 			fpVal := mem[fp-1].num

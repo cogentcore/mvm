@@ -360,8 +360,11 @@ func nativeTypeCompatible(want, have reflect.Type) bool {
 	return want.Implements(have) && have.Implements(want)
 }
 
+// ifaceMethodTypesMax is the number of types IfaceMethodTypes lists at most.
+const ifaceMethodTypesMax = 6
+
 // IfaceMethodTypes returns the types carrying typ's method set.
-func IfaceMethodTypes(typ *Type) (types [6]*Type, n int) {
+func IfaceMethodTypes(typ *Type) (types [ifaceMethodTypesMax]*Type, n int) {
 	push := func(t *Type) {
 		if t != nil && n < len(types) {
 			types[n] = t
@@ -378,17 +381,32 @@ func IfaceMethodTypes(typ *Type) (types [6]*Type, n int) {
 }
 
 // ResolveMethodType returns the Type whose Methods[id] holds the resolved entry.
+//
+// It walks the types IfaceMethodTypes lists, in its order and up to its
+// count, without making the list: it runs for every interface method call.
 func (t *Type) ResolveMethodType(id int) *Type {
 	if id < 0 {
 		return nil
 	}
-	types, n := IfaceMethodTypes(t)
-	for _, mt := range types[:n] {
-		if id < len(mt.Methods) && mt.Methods[id].IsResolved() {
-			return mt
+	n := 0
+	for cur := t; cur != nil && n < ifaceMethodTypesMax; cur = cur.Base {
+		n++
+		if cur.hasResolvedMethod(id) {
+			return cur
+		}
+		if e := cur.ElemType; cur.Kind() == reflect.Pointer && e != nil && n < ifaceMethodTypesMax {
+			n++
+			if e.hasResolvedMethod(id) {
+				return e
+			}
 		}
 	}
 	return nil
+}
+
+// hasResolvedMethod reports whether t's method id is resolved.
+func (t *Type) hasResolvedMethod(id int) bool {
+	return id < len(t.Methods) && t.Methods[id].IsResolved()
 }
 
 // MethodID returns the global method id for name, or -1 if absent, using names as
