@@ -58,6 +58,7 @@ type Parser struct {
 	blankSeq       int                       // counter for unique blank identifier names
 	namedOut       []string                  // scoped names of named return vars for current function
 	symTracker     []string                  // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
+	priorSyms      map[string]*symbol.Symbol // the symbols before the current top-level compile (SnapshotUnit)
 	genCounter     int                       // monotonic source of resolveDecls generations
 	curGen         int                       // generation of the current resolveDecls (nestable; saved/restored)
 	typeGen        map[*mtype.Type]int       // generation each declared placeholder *Type was minted in
@@ -111,6 +112,13 @@ func (p *Parser) SymAdd(i int, name string, v vm.Value, k symbol.Kind, t *mtype.
 	if k == symbol.LocalVar {
 		p.recordDirectLocal(name)
 	}
+}
+
+// priorSym reports whether s is a symbol of an earlier top-level compile,
+// such as a package var that a REPL redeclaration declares again, maybe with
+// another type, and so gets a symbol of its own.
+func (p *Parser) priorSym(s *symbol.Symbol) bool {
+	return s != nil && p.priorSyms[s.Name] == s
 }
 
 func (p *Parser) symGet(name string) (*symbol.Symbol, string, bool) {
@@ -508,6 +516,7 @@ func (p *Parser) SnapshotUnit() UnitState {
 	maps.Copy(unitg, p.unitGenerics)
 	pkgs := make(map[string]*symbol.Package, len(p.Packages))
 	maps.Copy(pkgs, p.Packages)
+	p.priorSyms = syms
 	return UnitState{
 		syms: syms, unitg: unitg, pkgs: pkgs, insts: insts,
 		iargs: maps.Clone(p.instArgs), iowner: maps.Clone(p.instOwner),
