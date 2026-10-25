@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mvm-sh/mvm/interp"
-	"github.com/mvm-sh/mvm/lang/golang"
+	"github.com/cogentcore/mvm/interp"
+	"github.com/cogentcore/mvm/lang/golang"
 )
 
 // vfmT has a method with a variadic func parameter, as such setters
