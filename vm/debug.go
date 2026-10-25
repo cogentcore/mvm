@@ -567,13 +567,14 @@ func SetSafepointHook(f func()) { safepointHook = f }
 // drains a pending interrupt (throttled by ctr) and services a state-dump
 // request. Out of line so the call cases stay small and the loop back-edge is
 // untouched.
-func (m *Machine) callSafepoint(ip, fp int, mem []Value, ctr *uint) {
-	if *ctr++; *ctr&safepointPollMask == 0 {
+func (m *Machine) callSafepoint(ip, fp int, mem []Value, ctr uint) uint {
+	if ctr++; ctr&safepointPollMask == 0 {
 		safepointHook()
 		if dumpRequested.Load() {
 			m.handleDumpReq(ip, fp, mem)
 		}
 	}
+	return ctr
 }
 
 // handleDumpReq services a request; the CAS lets exactly one machine dump. Out of

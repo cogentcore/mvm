@@ -24,15 +24,17 @@ const (
 // it under goscript (V8 does not optimize a function of more than 60 KB of
 // bytecode): calls through interfaces and the opcodes of maps, slices and
 // type assertions. runWarm is kept under that size too, apart from the
-// rare opcodes in runCold. It shares runLoop's state through pointers,
-// written back at each return. An opcode that panics leaves runLoop the
-// state from before it, from which runLoop's recovery unwinds as from the
-// faulting instruction; a deferred write-back would cost each call under
-// goscript. An opcode moves between the functions with its case.
-func (m *Machine) runWarm(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psafe *uint,
-	traceFlags uint8, panicAddr, deferRetAddr int, deferRetBits word,
+// rare opcodes in runCold. It shares runLoop's state through fields of the
+// Machine, which runLoop sets before the call and reads after it, and which
+// runWarm reads at entry and sets at each return: pointers to runLoop's
+// variables would make goscript keep them in heap cells. An opcode that
+// panics leaves runLoop the state from before it, from which runLoop's
+// recovery unwinds as from the faulting instruction; a deferred write-back
+// would cost each call under goscript. An opcode moves between the
+// functions with its case.
+func (m *Machine) runWarm(c *Instruction, traceFlags uint8, panicAddr, deferRetAddr int, deferRetBits word,
 ) (ctl coldCtl, done bool, err error) {
-	mem, ip, fp, sp, safepointCtr := *pmem, *pip, *pfp, *psp, *psafe
+	mem, ip, fp, sp, safepointCtr := m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr
 	switch c.Op {
 	case Addr:
 		v := mem[sp]
@@ -83,7 +85,7 @@ func (m *Machine) runWarm(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 			// *nil: recoverable nil deref, not a raw reflect panic.
 			m.raiseNilDeref()
 			ip = m.stageUnwind(ip, fp, mem)
-			*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+			m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 			return coldContinue, false, nil
 		}
 		v := Value{ref: r}
@@ -101,7 +103,7 @@ func (m *Machine) runWarm(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 			// *nil = v: recoverable nil deref, not a raw reflect panic.
 			m.raiseNilDeref()
 			ip = m.stageUnwind(ip, fp, mem)
-			*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+			m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 			return coldContinue, false, nil
 		}
 		if elem.Kind() == reflect.Func && elem.CanAddr() {
@@ -256,7 +258,7 @@ func (m *Machine) runWarm(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 			if isNilReceiver(recvRV) {
 				m.raiseNilDeref()
 				ip = m.stageUnwind(ip, fp, mem)
-				*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+				m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 				return coldContinue, false, nil
 			}
 			// defer/go: capture the receiver by value, not its slot.
@@ -309,7 +311,7 @@ func (m *Machine) runWarm(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 			if !rv.IsValid() {
 				m.raiseNilDeref()
 				ip = m.stageUnwind(ip, fp, mem)
-				*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+				m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 				return coldContinue, false, nil
 			}
 			if mv, ok := m.bindPromotedNative(rv, m.MethodNames[methodID]); ok {
@@ -381,7 +383,7 @@ func (m *Machine) runWarm(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 		if outcome == outNilRcv {
 			m.raiseNilDeref()
 			ip = m.stageUnwind(ip, fp, mem)
-			*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+			m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 			return coldContinue, false, nil
 		}
 		if outcome == outNative {
@@ -420,7 +422,7 @@ func (m *Machine) runWarm(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 			if nilHop {
 				m.raiseNilDeref()
 				ip = m.stageUnwind(ip, fp, mem)
-				*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+				m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 				return coldContinue, false, nil
 			}
 			// A ptr-recv method needs the pointer in the cell: with the bare
@@ -539,7 +541,7 @@ func (m *Machine) runWarm(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 				m.panicVal = Value{ref: reflect.ValueOf(m.posPrefix(c.Pos) + msg)}
 				sp--
 				ip = m.stageUnwind(ip, fp, mem)
-				*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+				m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 				return coldContinue, false, nil
 			}
 			mem[sp] = NewValue(dstTyp.Rtype)
@@ -587,7 +589,7 @@ func (m *Machine) runWarm(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 				m.panicVal = Value{ref: reflect.ValueOf(m.posPrefix(c.Pos) + msg)}
 				sp--
 				ip = m.stageUnwind(ip, fp, mem)
-				*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+				m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 				return coldContinue, false, nil
 			}
 			mem[sp] = NewValue(dstTyp.Rtype)
@@ -652,7 +654,7 @@ func (m *Machine) runWarm(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 		}
 		if !matched {
 			ip += int(c.A)
-			*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+			m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 			return coldContinue, false, nil
 		}
 
@@ -661,7 +663,7 @@ func (m *Machine) runWarm(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 			k, ok := e.nextIndexed()
 			if !ok {
 				ip += int(c.A)
-				*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+				m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 				return coldContinue, false, nil
 			}
 			assignSlotNum(&m.globals[int(c.B)], k)
@@ -673,7 +675,7 @@ func (m *Machine) runWarm(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 			}
 		} else {
 			ip += int(c.A)
-			*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+			m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 			return coldContinue, false, nil
 		}
 
@@ -683,7 +685,7 @@ func (m *Machine) runWarm(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 			k, ok := e.nextIndexed()
 			if !ok {
 				ip += int(c.A)
-				*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+				m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 				return coldContinue, false, nil
 			}
 			kAddr, vAddr := int(int16(c.B)), int(int16(c.B>>16))
@@ -703,7 +705,7 @@ func (m *Machine) runWarm(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 			}
 		} else {
 			ip += int(c.A)
-			*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+			m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 			return coldContinue, false, nil
 		}
 
@@ -950,7 +952,7 @@ func (m *Machine) runWarm(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 			// Writing to a nil map is a recoverable runtime panic in Go.
 			m.raiseNilMapAssign()
 			ip = m.stageUnwind(ip, fp, mem)
-			*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+			m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 			return coldContinue, false, nil
 		}
 		mt := mapVal.Type()
@@ -970,6 +972,6 @@ func (m *Machine) runWarm(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 		// Per-type Greater.
 
 	}
-	*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+	m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 	return coldNext, false, nil
 }

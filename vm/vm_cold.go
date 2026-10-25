@@ -13,10 +13,9 @@ import (
 
 // runCold runs the rare opcodes of c, which neither runLoop nor runWarm
 // runs (see runWarm). It shares runLoop's state as runWarm does.
-func (m *Machine) runCold(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psafe *uint,
-	traceFlags uint8, panicAddr, deferRetAddr int, deferRetBits word,
+func (m *Machine) runCold(c *Instruction, traceFlags uint8, panicAddr, deferRetAddr int, deferRetBits word,
 ) (ctl coldCtl, done bool, err error) {
-	mem, ip, fp, sp, safepointCtr := *pmem, *pip, *pfp, *psp, *psafe
+	mem, ip, fp, sp, safepointCtr := m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr
 	switch c.Op {
 	case HealSentinels:
 		m.healSentinels()
@@ -84,7 +83,7 @@ func (m *Machine) runCold(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 		}
 
 	case Exit:
-		*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+		m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 		return coldReturn, true, err
 
 	case FnewE:
@@ -99,7 +98,7 @@ func (m *Machine) runCold(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 		if cond {
 			ip += int(c.A)
 			// Note that the stack is not modified if cond is true.
-			*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+			m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 			return coldContinue, false, nil
 		}
 		sp--
@@ -109,7 +108,7 @@ func (m *Machine) runCold(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 		if !cond {
 			ip += int(c.A)
 			// Note that the stack is not modified if cond is false.
-			*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+			m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 			return coldContinue, false, nil
 		}
 		sp--
@@ -128,7 +127,7 @@ func (m *Machine) runCold(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 		m.mem = mem[:sp+1]
 		if m.newGoroutine(fval, args, c.B != 0) {
 			ip = m.stageUnwind(ip, fp, mem)
-			*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+			m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 			return coldContinue, false, nil
 		}
 		mem = m.mem[:cap(m.mem)]
@@ -145,7 +144,7 @@ func (m *Machine) runCold(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 		// GoCallImm targets a known VM func: never reflect-spread.
 		if m.newGoroutine(fval, args, false) {
 			ip = m.stageUnwind(ip, fp, mem)
-			*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+			m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 			return coldContinue, false, nil
 		}
 		mem = m.mem[:cap(m.mem)]
@@ -424,7 +423,7 @@ func (m *Machine) runCold(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 
 	case Trap:
 		ip, fp, sp, mem = m.handleTrap(ip, fp, sp, mem)
-		*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+		m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 		return coldContinue, false, nil
 
 	case Panic:
@@ -432,7 +431,7 @@ func (m *Machine) runCold(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 		m.panicVal = m.effectivePanicVal(mem[sp])
 		sp-- // pop the panic argument
 		ip = m.stageUnwind(ip, fp, mem)
-		*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+		m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 		return coldContinue, false, nil
 
 	case Recover:
@@ -998,18 +997,18 @@ func (m *Machine) runCold(c *Instruction, pmem *[]Value, pip, pfp, psp *int, psa
 
 	case DeferRet:
 		mem, sp, ip = m.deferRet(mem, fp, sp)
-		*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+		m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 		return coldContinue, false, nil
 
 	case PanicUnwind:
 		if done, uerr := m.panicUnwind(&mem, &fp, &sp, &ip, panicAddr); done {
-			*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+			m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 			return coldReturn, true, uerr
 		}
-		*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+		m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 		return coldContinue, false, nil
 
 	}
-	*pmem, *pip, *pfp, *psp, *psafe = mem, ip, fp, sp, safepointCtr
+	m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
 	return coldNext, false, nil
 }

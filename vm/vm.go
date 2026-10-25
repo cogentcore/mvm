@@ -408,6 +408,14 @@ type Machine struct {
 	heap       []*Value   // active closure's captured cells (nil for plain functions)
 	heapFrames [][]*Value // saved caller heaps (only for closure calls where heap != nil)
 
+	// The loop state of runLoop, shared with runWarm and runCold around each
+	// call of them (see runWarm).
+	tierMem          []Value
+	tierIP, tierFP   int
+	tierSP           int
+	tierSafepointCtr uint
+	tierNarg         int
+
 	panicking     bool        // true while unwinding due to panic
 	panicVal      Value       // value passed to panic()
 	panicInfo     *PanicError // (source pos + mvm stack) captured at panic before unwind
@@ -1178,7 +1186,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			// Interrupt poll, gated so mvm run (no hook) pays only a predicted
 			// branch; off the loop back-edge so pure compute loops are unaffected.
 			if safepointHook != nil {
-				m.callSafepoint(ip, fp, mem, &safepointCtr)
+				safepointCtr = m.callSafepoint(ip, fp, mem, safepointCtr)
 			}
 			narg := int(c.A)
 			fval := mem[sp-narg]
@@ -1251,7 +1259,9 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 				m.heap = nil
 			} else {
 				var ctl int
-				nip, ctl = m.callIndirect(c, fval, &mem, &ip, fp, &sp, &narg)
+				m.tierMem, m.tierIP, m.tierSP, m.tierNarg = mem, ip, sp, narg
+				nip, ctl = m.callIndirect(c, fval, fp)
+				mem, ip, sp, narg = m.tierMem, m.tierIP, m.tierSP, m.tierNarg
 				if ctl == callContinue {
 					continue
 				}
@@ -1295,7 +1305,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			continue
 		case CallImm:
 			if safepointHook != nil {
-				m.callSafepoint(ip, fp, mem, &safepointCtr)
+				safepointCtr = m.callSafepoint(ip, fp, mem, safepointCtr)
 			}
 			narg := int(c.B) >> 16
 			nret := int(c.B) & 0xFFFF
@@ -1340,7 +1350,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			// Fast-path CallImm: emitted when no callee param has reflect Kind
 			// Struct or Array, so detachByValueArgs would be a no-op.
 			if safepointHook != nil {
-				m.callSafepoint(ip, fp, mem, &safepointCtr)
+				safepointCtr = m.callSafepoint(ip, fp, mem, safepointCtr)
 			}
 			narg := int(c.B) >> 16
 			nret := int(c.B) & 0xFFFF
@@ -1978,7 +1988,9 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 		// The other opcodes run in runWarm and runCold (see there). They are
 		// listed rather than left to a default so the switch stays a jump table.
 		case Addr, Deref, DerefSet, AddrLocal, AddrGlobal, EqualSet, IfaceWrap, IfaceCall, TypeAssert, TypeBranch, Next, Next2, Pull, Pull2, Slice, Slice3, Stop, BitAnd, BitOr, BitXor, BitAndNot, BitShl, BitShr, Swap, MkSlice, MkMap, Append, AppendSlice, CopySlice, DeleteMap, IndexAddr, MapIndex, MapIndexOk, MapSet, GreaterStr, LowerStr:
-			ctl, cdone, cerr := m.runWarm(c, &mem, &ip, &fp, &sp, &safepointCtr, traceFlags, panicAddr, deferRetAddr, deferRetBits)
+			m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
+			ctl, cdone, cerr := m.runWarm(c, traceFlags, panicAddr, deferRetAddr, deferRetBits)
+			mem, ip, fp, sp, safepointCtr = m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr
 			if ctl == coldContinue {
 				continue
 			}
@@ -1986,7 +1998,9 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 				return cdone, cerr
 			}
 		case HealSentinels, Detach, GetLocalSync, GetLocalLowerUintImm, GetLocalGreaterUintImm, IndexSetBool, Get, Exit, FnewE, JumpSetTrue, JumpSetFalse, DeferPush, GoCall, GoCallImm, MkChan, ChanSend, ChanRecv, ChanClose, SelectExec, Print, Println, Complex, Real, Imag, AddComplex, SubComplex, MulComplex, DivComplex, NegComplex, Min, Max, WrapFunc, MkMethodExpr, Trap, Panic, Recover, MarkNamedRet, BitComp, Clz32, Clz64, Ctz32, Ctz64, Popcnt32, Popcnt64, Rotl32, Rotl64, Rotr32, Rotr64, AbsFloat32, AbsFloat64, SqrtFloat32, SqrtFloat64, CeilFloat32, CeilFloat64, FloorFloat32, FloorFloat64, TruncFloat32, TruncFloat64, NearestFloat32, NearestFloat64, MinFloat32, MinFloat64, MaxFloat32, MaxFloat64, CopysignFloat32, CopysignFloat64, CellGet, AddrCell, CellSet, AddrHeap, HeapPtr, Clear, Cap, PtrNew, SetS, AddStr, AddInt8, AddInt16, AddInt32, AddInt64, AddUint, AddUint8, AddUint16, AddUint32, AddUint64, AddFloat32, SubInt8, SubInt16, SubInt32, SubInt64, SubUint, SubUint8, SubUint16, SubUint32, SubUint64, SubFloat32, MulInt8, MulInt16, MulInt32, MulInt64, MulUint, MulUint8, MulUint16, MulUint32, MulUint64, MulFloat32, DivInt8, DivInt16, DivInt32, DivInt64, DivUint, DivUint8, DivUint16, DivUint32, DivUint64, DivFloat32, RemInt8, RemInt16, RemInt32, RemInt64, RemUint, RemUint8, RemUint16, RemUint32, RemUint64, NegInt8, NegInt16, NegInt32, NegInt64, NegUint, NegUint8, NegUint16, NegUint32, NegUint64, NegFloat32, NegFloat64, GreaterUint, GreaterUint8, GreaterUint16, GreaterUint32, GreaterUint64, LowerUint, LowerUint8, LowerUint16, LowerUint32, LowerUint64, GreaterEqualFloat, LowerEqualFloat, GreaterUintImm, LowerUintImm, DeferRet, PanicUnwind:
-			ctl, cdone, cerr := m.runCold(c, &mem, &ip, &fp, &sp, &safepointCtr, traceFlags, panicAddr, deferRetAddr, deferRetBits)
+			m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr = mem, ip, fp, sp, safepointCtr
+			ctl, cdone, cerr := m.runCold(c, traceFlags, panicAddr, deferRetAddr, deferRetBits)
+			mem, ip, fp, sp, safepointCtr = m.tierMem, m.tierIP, m.tierFP, m.tierSP, m.tierSafepointCtr
 			if ctl == coldContinue {
 				continue
 			}
@@ -4403,10 +4417,12 @@ const (
 // interpreted code address, closure or method frame: a native func or
 // method, called through reflect, or a method expression, which binds its
 // receiver and enters the interpreted code at nip. It is out of runLoop to
-// keep runLoop small (see runCold), and shares its state the same way.
-func (m *Machine) callIndirect(c *Instruction, fval Value, pmem *[]Value, pip *int, fp int, psp, pnarg *int) (nip, ctl int) {
-	mem, ip, sp, narg := *pmem, *pip, *psp, *pnarg
-	defer func() { *pmem, *pip, *psp, *pnarg = mem, ip, sp, narg }()
+// keep runLoop small (see runWarm), and shares its state the same way, with
+// the argument count, written back by a deferred call: a native call can
+// panic after changing the state.
+func (m *Machine) callIndirect(c *Instruction, fval Value, fp int) (nip, ctl int) {
+	mem, ip, sp, narg := m.tierMem, m.tierIP, m.tierSP, m.tierNarg
+	defer func() { m.tierMem, m.tierIP, m.tierSP, m.tierNarg = mem, ip, sp, narg }()
 	rv := fval.ref
 	if rv.Kind() == reflect.Interface && !rv.IsNil() {
 		rv = rv.Elem()
