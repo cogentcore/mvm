@@ -16,7 +16,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sync"
 	"unsafe"
 
 	"github.com/mvm-sh/mvm/internal/gsreflect"
@@ -60,20 +59,14 @@ const maxMethods = 256
 // MaxMethods is the per-synth-rtype method-table capacity.
 const MaxMethods = maxMethods
 
-var (
-	synthMu sync.RWMutex
-	// synthTypes holds the synthesized types, with the number of methods
-	// recorded for each by Fill.
-	synthTypes = map[reflect.Type]int{}
-)
-
-// markSynth records t as a synthesized type and returns it.
+// markSynth records t as a synthesized type and returns it. The types and
+// the number of methods Fill records for each are kept on the types (see
+// gsreflect.SetSynthMethods): a Go map keyed by reflect.Type hashes the type
+// under goscript, which is slow for a lookup as frequent as IsSynth.
 func markSynth(t reflect.Type) reflect.Type {
-	synthMu.Lock()
-	if _, ok := synthTypes[t]; !ok {
-		synthTypes[t] = 0
+	if _, ok := gsreflect.SynthMethods(t); !ok {
+		gsreflect.SetSynthMethods(t, 0)
 	}
-	synthMu.Unlock()
 	return t
 }
 
@@ -96,9 +89,7 @@ func (r *Reservation) Fill(methods []MethodSpec) error {
 	case len(methods) > maxMethods:
 		return fmt.Errorf("runtype: too many methods (%d > %d)", len(methods), maxMethods)
 	}
-	synthMu.Lock()
-	synthTypes[r.rt] = len(methods)
-	synthMu.Unlock()
+	gsreflect.SetSynthMethods(r.rt, len(methods))
 
 	// The methods of a named type, or of a pointer to one, are installed on
 	// the named type (see gsreflect.SetMethod). The pointer reservation is
@@ -186,10 +177,7 @@ func SetFieldEmbedded(rt reflect.Type, idx int, name, tag string, exported bool)
 
 // HasMethods reports whether t declares any methods.
 func HasMethods(t reflect.Type) bool {
-	synthMu.RLock()
-	n, ok := synthTypes[t]
-	synthMu.RUnlock()
-	if ok {
+	if n, ok := gsreflect.SynthMethods(t); ok {
 		return n > 0
 	}
 	return t.NumMethod() > 0
@@ -227,9 +215,7 @@ func IsSynth(t reflect.Type) bool {
 	if t == nil {
 		return false
 	}
-	synthMu.RLock()
-	_, ok := synthTypes[t]
-	synthMu.RUnlock()
+	_, ok := gsreflect.SynthMethods(t)
 	return ok
 }
 

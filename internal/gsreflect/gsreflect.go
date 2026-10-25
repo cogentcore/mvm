@@ -47,3 +47,10 @@ func SetMethod(t reflect.Type, name string, sig reflect.Type, ptrRecv bool,
 	fn func(recv reflect.Value, args []reflect.Value) []reflect.Value) {
 	panic(errNative)
 }
+
+// SetSynthMethods records t as a synthesized type with n methods.
+func SetSynthMethods(t reflect.Type, n int) { panic(errNative) }
+
+// SynthMethods returns the number of methods recorded for t by
+// SetSynthMethods, and whether t is recorded.
+func SynthMethods(t reflect.Type) (int, bool) { panic(errNative) }

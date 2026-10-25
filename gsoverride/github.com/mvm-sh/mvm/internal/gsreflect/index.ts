@@ -397,3 +397,19 @@ function methodSignature(
   }
   return { name, args, returns, pointerReceiver: ptrRecv }
 }
+
+// synthMethods holds the synthesized types, with the number of methods
+// recorded for each.
+const synthMethods = new WeakMap<object, number>()
+
+// SetSynthMethods records t as a synthesized type with n methods.
+export function SetSynthMethods(t: reflect.Type | null, n: number): void {
+  synthMethods.set(state(t), n)
+}
+
+// SynthMethods returns the number of methods recorded for t by
+// SetSynthMethods, and whether t is recorded.
+export function SynthMethods(t: reflect.Type | null): [number, boolean] {
+  const n = t === null ? undefined : synthMethods.get(t)
+  return n === undefined ? [0, false] : [n, true]
+}
