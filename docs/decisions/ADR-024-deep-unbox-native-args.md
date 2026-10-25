@@ -63,6 +63,27 @@ address in a map of the types seen there. The one-hop limit on maps
 (`maxMapHops`) is kept: it guards against iterating a live map of the wider
 object graph that another goroutine writes.
 
+The store paths that left boxes by mistake now unbox: 16 of the 17 boxes
+above came from them.
+- `unboxIfaceFor` kept the box of a pointer, as `&a` in `[]any{&a}`,
+  because the `*Type` of a pointer has the name of its element, which its
+  rtype does not carry, and so looked like an interpreted named type whose
+  rtype does not identify it. It kept the box of a generic instance too,
+  whose name is spelled differently in its `*Type` and its rtype
+  (`Map#string#int`, `Map[string,int]`). It now keeps a box only for a named
+  non-pointer type whose rtype neither is synthesized nor maps back to it
+  (`typeByRtype`).
+- `reflectForSend`, which `append` and channel sends use, stored the box of
+  a value sent to an `any` element. It now unboxes as `setFuncField` does.
+
+Two forms of boxes remain by design, and the walk is kept for them:
+- A slot of an interpreted (synthesized) interface type holds the
+  interpreter's interface form (`storeIfaceFromReflect`), since the
+  interpreter cannot decode a native itab for a synthesized interface.
+- An interpreted named type whose rtype does not identify it, such as a
+  methodless `type S string`, keeps its box in an `any` slot, for its
+  identity.
+
 ## Consequences
 
 **Easier:**
@@ -71,7 +92,8 @@ object graph that another goroutine writes.
   10 ms natively, 12 s to 0.37 s under goscript.
 - The walk covers the values it must by their type, not by a depth limit: an
   earlier fix limited it to 4 pointer hops, which was arbitrary.
-- The same 17 boxes are found over the `interptest` suite.
+- The same 17 boxes were found over the `interptest` suite; after the store
+  path fixes, the walk finds only the one of the designed forms.
 
 **Harder / limitations:**
 - The rule relies on the store invariant: every interpreted store into a
@@ -89,6 +111,6 @@ object graph that another goroutine writes.
 - **Caching on `Value`.** The boxes are in Go memory, not in the `Value`s of
   the interpreter, so a cache there does not tell which memory holds boxes.
 - **Unboxing at every store**, so that no box reaches Go memory and the walk
-  can go. This is the better end state, and the 7 tests above show the store
-  paths that still need it; until they all unbox, the walk stays as the
-  safety net.
+  can go. The store paths that left boxes by mistake now do; the two forms
+  that remain are needed for the interpreter's own reads and type identity,
+  so the walk stays, for them and as the safety net.
