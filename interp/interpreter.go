@@ -66,6 +66,7 @@ type Interp struct {
 	stdlibPatched bool
 	hostStdio     bool                 // keep interpreted os.Std* bound to host *os.File
 	synthAttached map[*mtype.Type]bool // types already passed through AttachSynthMethods
+	dataPushed    int                  // len(Data) already pushed to the VM by earlier Evals
 	Stats         Stats
 }
 
@@ -119,11 +120,9 @@ func (i *Interp) EvalFiles(sources []goparser.PackageSource) (reflect.Value, err
 // returning the last produced value. Shared by Eval and EvalFiles.
 func (i *Interp) evalCompiled(name string, compile func() error) (res reflect.Value, err error) {
 	codeOffset := len(i.Code)
-	dataOffset := 0
-	if codeOffset > 0 {
-		// All data must be copied to the VM the first time only (re-entrance).
-		dataOffset = len(i.Data)
-	}
+	// Only the data added since the last Eval is copied to the VM
+	// (re-entrance). An Eval can add data but no code, as an import does.
+	dataOffset := i.dataPushed
 	// Drop the previous Eval's leftover init/main call shims so m.code
 	// stays index-aligned with the compiler's Code.
 	i.TrimCode(codeOffset)
@@ -160,6 +159,7 @@ func (i *Interp) evalCompiled(name string, compile func() error) (res reflect.Va
 
 	i.TrimStack()
 	i.Push(i.Data[dataOffset:]...)
+	i.dataPushed = len(i.Data)
 	// start is the VM-code position of the freshly compiled code.
 	// It can sit past codeOffset because prior Evals left their per-Evals
 	// init/main call shims in m.code, and PopExit reclaims only the trailing Exit.
