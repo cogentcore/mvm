@@ -568,7 +568,7 @@ func traceIndent(mem []Value, fp int) string {
 	d := 0
 	for fp > 0 && fp-1 < len(mem) {
 		d++
-		fp = int(mem[fp-1].num &^ (1 << 63))
+		fp = fpOf(mem[fp-1].num)
 	}
 	d-- // discard Eval driver frame
 	if d <= 0 {
@@ -621,22 +621,22 @@ func stackTop(mem []Value, sp, fp, n int) string {
 		}
 		switch i {
 		case fp - 3:
-			fmt.Fprintf(&sb, "%d:deferHead=%d", i, v.num)
+			fmt.Fprintf(&sb, "%d:deferHead=%v", i, v.num)
 		case fp - 2:
-			retIP := int(int32(v.num))
-			nret := int((v.num >> 32) & retNretMask)
-			fb := int(v.num >> 48)
+			retIP := retIPOf(v.num)
+			nret := retNret(v.num)
+			fb := retFrameBase(v.num)
 			fmt.Fprintf(&sb, "%d:ret=%d,nret=%d,fb=%d", i, retIP, nret, fb)
 		case fp - 1:
-			prevFP := int(v.num &^ (1 << 63))
-			heap := v.num>>63 != 0
+			prevFP := fpOf(v.num)
+			heap := fpHeapSaved(v.num)
 			if heap {
 				fmt.Fprintf(&sb, "%d:prevFP=%d,heap", i, prevFP)
 			} else {
 				fmt.Fprintf(&sb, "%d:prevFP=%d", i, prevFP)
 			}
 		default:
-			fmt.Fprintf(&sb, "%d:%d", i, v.num)
+			fmt.Fprintf(&sb, "%d:%v", i, v.num)
 		}
 	}
 	sb.WriteByte(']')
@@ -682,59 +682,7 @@ func (m *Machine) execConvert(c *Instruction, mem []Value, sp int) {
 
 	switch {
 	case isNum(srcKind) && isNum(dstKind):
-		bits := v.num
-		switch {
-		case isFloat(srcKind) && isFloat(dstKind):
-			if srcKind != dstKind {
-				f := math.Float64frombits(bits)
-				if dstKind == reflect.Float32 {
-					bits = math.Float64bits(float64(float32(f)))
-				}
-			}
-		case isFloat(srcKind):
-			f := math.Float64frombits(bits)
-			if dstKind >= reflect.Uint && dstKind <= reflect.Uintptr {
-				bits = uint64(f)
-			} else {
-				bits = uint64(int64(f))
-			}
-		case isFloat(dstKind):
-			// int -> float.
-			if srcKind >= reflect.Uint && srcKind <= reflect.Uintptr {
-				bits = math.Float64bits(float64(bits))
-			} else {
-				bits = math.Float64bits(float64(int64(bits)))
-			}
-		}
-		// Truncate to target width for sub-word types.
-		switch dstKind {
-		case reflect.Int:
-			mem[idx] = Value{num: bits, ref: zint}
-		case reflect.Int8:
-			mem[idx] = Value{num: uint64(int8(bits)), ref: zint8}
-		case reflect.Int16:
-			mem[idx] = Value{num: uint64(int16(bits)), ref: zint16}
-		case reflect.Int32:
-			mem[idx] = Value{num: uint64(int32(bits)), ref: zint32}
-		case reflect.Int64:
-			mem[idx] = Value{num: bits, ref: zint64}
-		case reflect.Uint:
-			mem[idx] = Value{num: bits, ref: zuint}
-		case reflect.Uint8:
-			mem[idx] = Value{num: uint64(uint8(bits)), ref: zuint8}
-		case reflect.Uint16:
-			mem[idx] = Value{num: uint64(uint16(bits)), ref: zuint16}
-		case reflect.Uint32:
-			mem[idx] = Value{num: uint64(uint32(bits)), ref: zuint32}
-		case reflect.Uint64:
-			mem[idx] = Value{num: bits, ref: zuint64}
-		case reflect.Uintptr:
-			mem[idx] = Value{num: bits, ref: zuintptr}
-		case reflect.Float32:
-			mem[idx] = Value{num: math.Float64bits(float64(float32(math.Float64frombits(bits)))), ref: zfloat32}
-		case reflect.Float64:
-			mem[idx] = Value{num: bits, ref: zfloat64}
-		}
+		mem[idx] = Value{num: convertNum(v.num, srcKind, dstKind), ref: zeroOfKind(dstKind)}
 		if dstType.NumMethod() > 0 {
 			mem[idx].ref = reflect.Zero(dstType) // preserve named type identity.
 		}
@@ -743,9 +691,9 @@ func (m *Machine) execConvert(c *Instruction, mem []Value, sp int) {
 		var re float64
 		switch {
 		case isFloat(srcKind):
-			re = math.Float64frombits(v.num)
+			re = wordFloat(v.num)
 		case srcKind >= reflect.Uint && srcKind <= reflect.Uintptr:
-			re = float64(v.num)
+			re = float64(uint64(v.num))
 		default:
 			re = float64(int64(v.num))
 		}
@@ -784,7 +732,7 @@ func (m *Machine) execConvert(c *Instruction, mem []Value, sp int) {
 		(dstKind == reflect.Pointer || dstKind == reflect.Uintptr):
 		up := v.ref.UnsafePointer()
 		if dstKind == reflect.Uintptr {
-			mem[idx] = Value{num: uint64(uintptr(up)), ref: reflect.Zero(dstType)}
+			mem[idx] = Value{num: word(uintptr(up)), ref: reflect.Zero(dstType)}
 		} else {
 			mem[idx] = FromReflect(reflect.NewAt(dstType.Elem(), up))
 		}
@@ -864,7 +812,7 @@ func finalizeReturns(mem []Value, ofp, newBase, nret int) {
 }
 
 func (m *Machine) handleRecover(fp, sp int, mem []Value, deferRetAddr int) (int, []Value) {
-	if m.panicking && int(int32(mem[fp-2].num)) == deferRetAddr {
+	if m.panicking && retIPOf(mem[fp-2].num) == deferRetAddr {
 		m.panicking = false
 		pv := m.panicVal
 		if pv.IsValid() && !pv.IsIface() {
@@ -933,8 +881,6 @@ func (m *Machine) posPrefix(pos Pos) string {
 // with the VM defers unran.
 var goexitFuncPC = reflect.ValueOf(runtime.Goexit).Pointer()
 
-const heapSavedFlag = uint64(1) << 63
-
 // CallSpreadFlag is set in the B operand of Call to indicate a spread call
 // (f(s...)), so the VM uses reflect.CallSlice instead of reflect.Call for
 // native variadic functions.
@@ -948,27 +894,6 @@ const CallSpreadFlag int32 = 1 << 15
 // would re-run the program/_testmain and recurse without bound.
 const nilFuncAddr = 0
 
-// retIPInfo word layout: retIP bits 0..31, nret bits 32..45 (retNretMask),
-// hasNamedRetFlag bit 46, namedRetFlag bit 47, frameBase bits 48..63.
-// namedRetFlag: captured returns, finalized on the normal Return path.
-// hasNamedRetFlag: any named returns; a recover returns their current values, so
-// panicUnwind finalizes from the slots rather than zeroing.
-const (
-	retNretMask            = 0x3FFF
-	hasNamedRetFlag uint64 = 1 << 46
-	namedRetFlag    uint64 = 1 << 47
-)
-
-func packRetIP(retIP, nret, frameBase int) uint64 {
-	return uint64(uint32(retIP)) | uint64(nret&retNretMask)<<32 | uint64(frameBase)<<48
-}
-
-// A defer entry's mem[dh-2] slot packs isX (bits 0..1: 0 VM, 1 native, 2
-// builtin), narg (bits 2..62), and deferStartedFlag (bit 63), via the helpers
-// below. The flag lets panicUnwind skip an already-dispatched defer (Go's
-// _defer.started) rather than re-run one whose body panicked before deferRet.
-const deferStartedFlag = uint64(1) << 63
-
 // DeferSpreadFlag marks that the call's final argument is a variadic slice, so
 // native defers use reflect.CallSlice. Set in the DeferPush B operand alongside
 // isX. Defer header layout: isX bits 0-1, spread bit 2, narg bits 3-62, started 63.
@@ -978,11 +903,6 @@ const DeferSpreadFlag = 4
 // defer/go) makes the native path capture the receiver by value, not alias its
 // slot. Low bits stay the recvTypeHint.
 const IfaceCallDetachBit = 1 << 30
-
-func packDefer(narg, isX, spread int) uint64 { return uint64(narg<<3 | spread<<2 | isX) }
-func deferNarg(packed uint64) int            { return int((packed &^ deferStartedFlag) >> 3) }
-func deferIsX(packed uint64) int             { return int(packed & 3) }
-func deferSpread(packed uint64) bool         { return packed&DeferSpreadFlag != 0 }
 
 func growStack(mem []Value, sp, need int) []Value {
 	n := max(len(mem)*2, sp+1+need+256)
@@ -1031,7 +951,7 @@ func (m *Machine) Run() (err error) {
 	m.baseCodeLen = sentBase
 	deferRetAddr := sentBase
 	panicAddr := m.panicAddr()
-	deferRetBits := uint64(deferRetAddr)
+	deferRetBits := word(deferRetAddr)
 
 	// Hoist trace flags into a register-resident local so the hot-loop check
 	// is a single compare-against-zero on a register. Toggles via
@@ -1148,7 +1068,7 @@ func normalizeOpPanic(r any) any {
 // panic (done=true). A catchable Go runtime panic from an interpreted op is
 // converted into an mvm panic at the faulting instruction (done=false), so an
 // interpreted recover() catches it like a native-call panic (see invokeNative).
-func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRetBits uint64) (done bool, err error) {
+func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRetBits word) (done bool, err error) {
 	mem, ip, fp := m.mem, m.ip, m.fp
 	sp := len(mem) - 1
 	// Extend mem to full capacity so all writes up to cap are in bounds.
@@ -1425,10 +1345,10 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 				continue
 			}
 			nret := int(c.B &^ CallSpreadFlag)
-			fpVal := uint64(fp)
+			fpVal := fpWord(fp, false)
 			if prevHeap != nil {
 				m.heapFrames = append(m.heapFrames, prevHeap)
-				fpVal |= heapSavedFlag
+				fpVal = fpWord(fp, true)
 			}
 			// Inline the callee's leading Grow (when present); see CallImm.
 			var locals, slack int
@@ -1459,11 +1379,11 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			}
 			narg := int(c.B) >> 16
 			nret := int(c.B) & 0xFFFF
-			fpVal := uint64(fp)
+			fpVal := fpWord(fp, false)
 			if m.heap != nil {
 				// preserve caller closure context
 				m.heapFrames = append(m.heapFrames, m.heap)
-				fpVal |= heapSavedFlag
+				fpVal = fpWord(fp, true)
 				m.heap = nil
 			}
 			nip := int(m.globals[int(c.A)].num)
@@ -1504,10 +1424,10 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			}
 			narg := int(c.B) >> 16
 			nret := int(c.B) & 0xFFFF
-			fpVal := uint64(fp)
+			fpVal := fpWord(fp, false)
 			if m.heap != nil {
 				m.heapFrames = append(m.heapFrames, m.heap)
-				fpVal |= heapSavedFlag
+				fpVal = fpWord(fp, true)
 				m.heap = nil
 			}
 			nip := int(m.globals[int(c.A)].num)
@@ -1657,19 +1577,19 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 		case GetLocalAddIntImm:
 			sp++
 			v := mem[int(c.A)+fp-1]
-			v.num = uint64(int(v.num) + int(c.B))
+			v.num = word(int(v.num) + int(c.B))
 			v.ref = zint
 			mem[sp] = v
 		case GetLocalSubIntImm:
 			sp++
 			v := mem[int(c.A)+fp-1]
-			v.num = uint64(int(v.num) - int(c.B))
+			v.num = word(int(v.num) - int(c.B))
 			v.ref = zint
 			mem[sp] = v
 		case GetLocalMulIntImm:
 			sp++
 			v := mem[int(c.A)+fp-1]
-			v.num = uint64(int(v.num) * int(c.B))
+			v.num = word(int(v.num) * int(c.B))
 			v.ref = zint
 			mem[sp] = v
 		case GetLocalLowerIntImm:
@@ -1688,15 +1608,15 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			sp++
 			mem[sp] = mem[int(c.A)+fp-1]
 			retIPInfo := mem[fp-2].num
-			frameBase := int(retIPInfo >> 48)
-			ip = int(int32(retIPInfo))
+			frameBase := retFrameBase(retIPInfo)
+			ip = retIPOf(retIPInfo)
 			ofp := fp
 			if len(m.iterStack) != 0 {
 				m.dropIterFrames(ofp) // early return out of a range loop skips Stop
 			}
 			fpVal := mem[fp-1].num
-			if fpVal&heapSavedFlag != 0 {
-				fp = int(fpVal &^ heapSavedFlag)
+			if fpHeapSaved(fpVal) {
+				fp = fpOf(fpVal)
 				top := len(m.heapFrames) - 1
 				m.heap = m.heapFrames[top]
 				m.heapFrames[top] = nil // clear for GC
@@ -1706,7 +1626,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 				m.heap = nil
 			}
 			newBase := ofp - frameBase
-			nret := int((retIPInfo >> 32) & retNretMask)
+			nret := retNret(retIPInfo)
 			switch nret {
 			case 0:
 			case 1:
@@ -1740,28 +1660,28 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			}
 		case AddLocalLocal:
 			slot := &mem[int(c.A)+fp-1]
-			n := uint64(int(slot.num) + int(mem[int(c.B)+fp-1].num))
+			n := word(int(slot.num) + int(mem[int(c.B)+fp-1].num))
 			slot.num = n
 			if isNum(slot.ref.Kind()) && slot.ref.CanSet() {
 				setNumReflect(slot.ref, n)
 			}
 		case SubLocalLocal:
 			slot := &mem[int(c.A)+fp-1]
-			n := uint64(int(slot.num) - int(mem[int(c.B)+fp-1].num))
+			n := word(int(slot.num) - int(mem[int(c.B)+fp-1].num))
 			slot.num = n
 			if isNum(slot.ref.Kind()) && slot.ref.CanSet() {
 				setNumReflect(slot.ref, n)
 			}
 		case AddLocalIntImm:
 			slot := &mem[int(c.A)+fp-1]
-			n := uint64(int(slot.num) + int(c.B))
+			n := word(int(slot.num) + int(c.B))
 			slot.num = n
 			if isNum(slot.ref.Kind()) && slot.ref.CanSet() {
 				setNumReflect(slot.ref, n)
 			}
 		case SubLocalIntImm:
 			slot := &mem[int(c.A)+fp-1]
-			n := uint64(int(slot.num) - int(c.B))
+			n := word(int(slot.num) - int(c.B))
 			slot.num = n
 			if isNum(slot.ref.Kind()) && slot.ref.CanSet() {
 				setNumReflect(slot.ref, n)
@@ -2433,7 +2353,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 				mem = growStack(mem, sp, 1)
 			}
 			sp++
-			mem[sp] = Value{num: uint64(int(c.A)), ref: zint}
+			mem[sp] = Value{num: word(int(c.A)), ref: zint}
 		case Pull:
 			v := mem[sp]
 			if v.IsIface() {
@@ -2642,7 +2562,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 					}
 				}
 			}
-			mem[sp] = Value{num: uint64(chosen), ref: zint}
+			mem[sp] = Value{num: word(chosen), ref: zint}
 
 		case Print:
 			n := int(c.A)
@@ -2814,16 +2734,16 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			sp, mem = m.handleRecover(fp, sp, mem, deferRetAddr)
 
 		case MarkNamedRet:
-			mem[fp-2].num |= hasNamedRetFlag
+			mem[fp-2].num = retSetFlag(mem[fp-2].num, hasNamedRetFlag)
 			if c.A != 0 { // captured: normal Return finalizes too
-				mem[fp-2].num |= namedRetFlag
+				mem[fp-2].num = retSetFlag(mem[fp-2].num, namedRetFlag)
 			}
 
 		case Return:
 			// Read nret and frameBase from the packed retIP slot.
 			retIPInfo := mem[fp-2].num
-			nret := int((retIPInfo >> 32) & retNretMask)
-			frameBase := int(retIPInfo >> 48)
+			nret := retNret(retIPInfo)
+			frameBase := retFrameBase(retIPInfo)
 			// If there are pending defers in this frame, dispatch the top one (LIFO).
 			dh := int(mem[fp-3].num)
 			if dh != 0 {
@@ -2841,7 +2761,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 						// values, then unwind the remaining defers of this frame.
 						m.panicVal = m.effectivePanicVal(mem[dh-narg-2])
 						m.panicking = true
-						mem[fp-3].num = uint64(prevHead)
+						mem[fp-3].num = word(prevHead)
 						clear(mem[retBase : sp+1])
 						sp = retBase - 1
 						ip = m.stageUnwind(ip, fp, mem)
@@ -2855,7 +2775,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 					copy(mem[retBase:retBase+nret], mem[dh+1:dh+1+nret])
 					clear(mem[retBase+nret : sp+1])
 					sp = retBase + nret - 1
-					mem[fp-3].num = uint64(prevHead)
+					mem[fp-3].num = word(prevHead)
 					continue
 				}
 				if isX == 1 {
@@ -2863,7 +2783,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 					rv := runtype.Exportable(unwrapIface(funcVal.ref))
 					if rv.Kind() != reflect.Func || rv.IsNil() {
 						// Nil deferred call panics; flag started so panicUnwind pops it.
-						mem[dh-2].num |= deferStartedFlag
+						mem[dh-2].num = deferSetStarted(mem[dh-2].num)
 						m.raiseNilDeref()
 						ip = m.stageUnwindAt(deferIP, fp, mem)
 						continue
@@ -2877,7 +2797,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 					// Flag started so a panic inside isn't re-run by panicUnwind.
 					// invokeNative makes the panic catchable by an enclosing
 					// recover() (Go semantics) instead of escaping the VM raw.
-					mem[dh-2].num |= deferStartedFlag
+					mem[dh-2].num = deferSetStarted(mem[dh-2].num)
 					m.mem, m.fp, m.ip = mem, fp, deferIP+1
 					if _, panicked := m.invokeNative(nil, reflect.Value{}, rv, rin, deferSpread(packed)); panicked {
 						ip = m.stageUnwindAt(deferIP, fp, mem)
@@ -2889,12 +2809,12 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 					}
 					clear(mem[retBase+nret : sp+1])
 					sp = retBase + nret - 1
-					mem[fp-3].num = uint64(prevHead)
+					mem[fp-3].num = word(prevHead)
 					continue // re-check for more defers
 				}
 				// VM function: pack ip and nret into the returnIP slot, then call.
-				mem[dh].num = uint64(ip) | uint64(nret)<<32
-				mem[dh-2].num |= deferStartedFlag
+				mem[dh].num = packDeferRet(ip, nret)
+				mem[dh-2].num = deferSetStarted(mem[dh-2].num)
 				prevHeap := m.heap
 				nip := m.resolveIPAndHeap(funcVal)
 				if nip == nilFuncAddr {
@@ -2919,10 +2839,10 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 					copy(mem[sp+1:], mem[dh-narg-2:dh-2])
 					sp += n
 				}
-				defFPVal := uint64(fp)
+				defFPVal := fpWord(fp, false)
 				if prevHeap != nil {
 					m.heapFrames = append(m.heapFrames, prevHeap)
-					defFPVal |= heapSavedFlag
+					defFPVal = fpWord(fp, true)
 				}
 				if sp+3 >= len(mem) {
 					mem = growStack(mem, sp, 3)
@@ -2936,14 +2856,14 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 				continue
 			}
 			// No pending defers: normal frame teardown.
-			ip = int(int32(retIPInfo))
+			ip = retIPOf(retIPInfo)
 			ofp := fp
 			if len(m.iterStack) != 0 {
 				m.dropIterFrames(ofp) // early return out of a range loop skips Stop
 			}
 			fpVal := mem[fp-1].num
-			if fpVal&heapSavedFlag != 0 {
-				fp = int(fpVal &^ heapSavedFlag)
+			if fpHeapSaved(fpVal) {
+				fp = fpOf(fpVal)
 				top := len(m.heapFrames) - 1
 				m.heap = m.heapFrames[top]
 				m.heapFrames[top] = nil // clear for GC
@@ -2953,7 +2873,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 				m.heap = nil
 			}
 			newBase := ofp - frameBase
-			if retIPInfo&namedRetFlag != 0 {
+			if retHasFlag(retIPInfo, namedRetFlag) {
 				// Captured named returns: finalize results from the fixed
 				// named-return slots (mem[ofp+0..nret-1]) AFTER defers, so a
 				// deferred closure's write to a named return is reflected.
@@ -2987,88 +2907,72 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			m.popIterStop()
 		// Generic bitwise.
 		case BitAnd:
-			mem[sp-1].num &= mem[sp].num
+			mem[sp-1].num = bitAnd(mem[sp-1].num, mem[sp].num)
 			resetNumRef(&mem[sp-1])
 			sp--
 		case BitOr:
-			mem[sp-1].num |= mem[sp].num
+			mem[sp-1].num = bitOr(mem[sp-1].num, mem[sp].num)
 			resetNumRef(&mem[sp-1])
 			sp--
 		case BitXor:
-			mem[sp-1].num ^= mem[sp].num
+			mem[sp-1].num = bitXor(mem[sp-1].num, mem[sp].num)
 			resetNumRef(&mem[sp-1])
 			sp--
 		case BitAndNot:
-			mem[sp-1].num &^= mem[sp].num
+			mem[sp-1].num = bitAndNot(mem[sp-1].num, mem[sp].num)
 			resetNumRef(&mem[sp-1])
 			sp--
 		case BitShl:
-			// Truncate to LHS width: Go's `<<` yields the LHS type. The uint64
-			// shift can overflow narrower types and leave .num out of sync with
-			// the value's reflect-backed representation, breaking subsequent
-			// comparisons and Equal which read .num directly.
-			k := mem[sp-1].ref.Kind()
-			mem[sp-1].num = truncToKind(mem[sp-1].num<<mem[sp].num, k)
+			// Truncate to LHS width: Go's `<<` yields the LHS type (see shlWord).
+			mem[sp-1].num = shlWord(mem[sp-1].num, mem[sp].num, mem[sp-1].ref.Kind())
 			resetNumRef(&mem[sp-1])
 			sp--
 		case BitShr:
-			k := mem[sp-1].ref.Kind()
-			switch {
-			case k >= reflect.Uint && k <= reflect.Uintptr:
-				mem[sp-1].num = truncToKind(mem[sp-1].num, k) >> mem[sp].num
-			case k == reflect.Int8:
-				mem[sp-1].num = uint64(int64(int8(mem[sp-1].num)) >> mem[sp].num)
-			case k == reflect.Int16:
-				mem[sp-1].num = uint64(int64(int16(mem[sp-1].num)) >> mem[sp].num)
-			case k == reflect.Int32:
-				mem[sp-1].num = uint64(int64(int32(mem[sp-1].num)) >> mem[sp].num)
-			default:
-				mem[sp-1].num = uint64(int64(mem[sp-1].num) >> mem[sp].num)
-			}
+			mem[sp-1].num = shrWord(mem[sp-1].num, mem[sp].num, mem[sp-1].ref.Kind())
 			resetNumRef(&mem[sp-1])
 			sp--
 		case BitComp:
-			mem[sp].num = truncToKind(^mem[sp].num, mem[sp].ref.Kind())
+			mem[sp].num = compWord(mem[sp].num, mem[sp].ref.Kind())
 			resetNumRef(&mem[sp])
 
 		// Bit manipulation.
 		case Clz32:
-			mem[sp].num = uint64(bits.LeadingZeros32(uint32(mem[sp].num)))
+			mem[sp].num = word(bits.LeadingZeros32(uint32(mem[sp].num)))
 			mem[sp].ref = zint
 		case Clz64:
-			mem[sp].num = uint64(bits.LeadingZeros64(mem[sp].num))
+			mem[sp].num = word(bits.LeadingZeros64(uint64(mem[sp].num)))
 			mem[sp].ref = zint
 		case Ctz32:
-			mem[sp].num = uint64(bits.TrailingZeros32(uint32(mem[sp].num)))
+			mem[sp].num = word(bits.TrailingZeros32(uint32(mem[sp].num)))
 			mem[sp].ref = zint
 		case Ctz64:
-			mem[sp].num = uint64(bits.TrailingZeros64(mem[sp].num))
+			mem[sp].num = word(bits.TrailingZeros64(uint64(mem[sp].num)))
 			mem[sp].ref = zint
 		case Popcnt32:
-			mem[sp].num = uint64(bits.OnesCount32(uint32(mem[sp].num)))
+			mem[sp].num = word(bits.OnesCount32(uint32(mem[sp].num)))
 			mem[sp].ref = zint
 		case Popcnt64:
-			mem[sp].num = uint64(bits.OnesCount64(mem[sp].num))
+			mem[sp].num = word(bits.OnesCount64(uint64(mem[sp].num)))
 			mem[sp].ref = zint
 		case Rotl32:
 			k := int(mem[sp].num)
 			sp--
-			mem[sp].num = uint64(bits.RotateLeft32(uint32(mem[sp].num), k))
+			mem[sp].num = word(bits.RotateLeft32(uint32(mem[sp].num), k))
 			resetNumRef(&mem[sp])
 		case Rotl64:
 			k := int(mem[sp].num)
 			sp--
-			mem[sp].num = bits.RotateLeft64(mem[sp].num, k)
+			mem[sp].num = word(bits.RotateLeft64(uint64(mem[sp].num), k))
 			resetNumRef(&mem[sp])
 		case Rotr32:
 			k := int(mem[sp].num)
 			sp--
-			mem[sp].num = uint64(bits.RotateLeft32(uint32(mem[sp].num), -k))
+			mem[sp].num = word(bits.RotateLeft32(uint32(mem[sp].num), -k))
 			resetNumRef(&mem[sp])
 		case Rotr64:
 			k := int(mem[sp].num)
 			sp--
-			mem[sp].num = bits.RotateLeft64(mem[sp].num, -k)
+			mem[sp].num = word(bits.RotateLeft64(uint64(mem[sp].num), -k))
 			resetNumRef(&mem[sp])
 
 		// Float math (unary).
@@ -3076,37 +2980,37 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			mem[sp].num = putf32(float32(math.Abs(float64(getf32(mem[sp].num)))))
 			mem[sp].ref = zfloat32
 		case AbsFloat64:
-			mem[sp].num = math.Float64bits(math.Abs(math.Float64frombits(mem[sp].num)))
+			mem[sp].num = floatWord(math.Abs(wordFloat(mem[sp].num)))
 			mem[sp].ref = zfloat64
 		case SqrtFloat32:
 			mem[sp].num = putf32(float32(math.Sqrt(float64(getf32(mem[sp].num)))))
 			mem[sp].ref = zfloat32
 		case SqrtFloat64:
-			mem[sp].num = math.Float64bits(math.Sqrt(math.Float64frombits(mem[sp].num)))
+			mem[sp].num = floatWord(math.Sqrt(wordFloat(mem[sp].num)))
 			mem[sp].ref = zfloat64
 		case CeilFloat32:
 			mem[sp].num = putf32(float32(math.Ceil(float64(getf32(mem[sp].num)))))
 			mem[sp].ref = zfloat32
 		case CeilFloat64:
-			mem[sp].num = math.Float64bits(math.Ceil(math.Float64frombits(mem[sp].num)))
+			mem[sp].num = floatWord(math.Ceil(wordFloat(mem[sp].num)))
 			mem[sp].ref = zfloat64
 		case FloorFloat32:
 			mem[sp].num = putf32(float32(math.Floor(float64(getf32(mem[sp].num)))))
 			mem[sp].ref = zfloat32
 		case FloorFloat64:
-			mem[sp].num = math.Float64bits(math.Floor(math.Float64frombits(mem[sp].num)))
+			mem[sp].num = floatWord(math.Floor(wordFloat(mem[sp].num)))
 			mem[sp].ref = zfloat64
 		case TruncFloat32:
 			mem[sp].num = putf32(float32(math.Trunc(float64(getf32(mem[sp].num)))))
 			mem[sp].ref = zfloat32
 		case TruncFloat64:
-			mem[sp].num = math.Float64bits(math.Trunc(math.Float64frombits(mem[sp].num)))
+			mem[sp].num = floatWord(math.Trunc(wordFloat(mem[sp].num)))
 			mem[sp].ref = zfloat64
 		case NearestFloat32:
 			mem[sp].num = putf32(float32(math.RoundToEven(float64(getf32(mem[sp].num)))))
 			mem[sp].ref = zfloat32
 		case NearestFloat64:
-			mem[sp].num = math.Float64bits(math.RoundToEven(math.Float64frombits(mem[sp].num)))
+			mem[sp].num = floatWord(math.RoundToEven(wordFloat(mem[sp].num)))
 			mem[sp].ref = zfloat64
 
 		// Float math (binary).
@@ -3115,7 +3019,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			mem[sp-1].ref = zfloat32
 			sp--
 		case MinFloat64:
-			mem[sp-1].num = math.Float64bits(math.Min(math.Float64frombits(mem[sp-1].num), math.Float64frombits(mem[sp].num)))
+			mem[sp-1].num = floatWord(math.Min(wordFloat(mem[sp-1].num), wordFloat(mem[sp].num)))
 			mem[sp-1].ref = zfloat64
 			sp--
 		case MaxFloat32:
@@ -3123,7 +3027,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			mem[sp-1].ref = zfloat32
 			sp--
 		case MaxFloat64:
-			mem[sp-1].num = math.Float64bits(math.Max(math.Float64frombits(mem[sp-1].num), math.Float64frombits(mem[sp].num)))
+			mem[sp-1].num = floatWord(math.Max(wordFloat(mem[sp-1].num), wordFloat(mem[sp].num)))
 			mem[sp-1].ref = zfloat64
 			sp--
 		case CopysignFloat32:
@@ -3131,7 +3035,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			mem[sp-1].ref = zfloat32
 			sp--
 		case CopysignFloat64:
-			mem[sp-1].num = math.Float64bits(math.Copysign(math.Float64frombits(mem[sp-1].num), math.Float64frombits(mem[sp].num)))
+			mem[sp-1].num = floatWord(math.Copysign(wordFloat(mem[sp-1].num), wordFloat(mem[sp].num)))
 			mem[sp-1].ref = zfloat64
 			sp--
 
@@ -3357,7 +3261,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			idx := int(mem[sp].num)
 			ref := reflect.Indirect(mem[sp-1].ref)
 			if ref.Kind() == reflect.String {
-				mem[sp-1] = Value{num: uint64(ref.String()[idx]), ref: zuint8}
+				mem[sp-1] = Value{num: word(ref.String()[idx]), ref: zuint8}
 			} else {
 				mem[sp-1] = FromReflect(ref.Index(idx))
 			}
@@ -3414,282 +3318,282 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			mem[sp-1] = Value{ref: reflect.ValueOf(mem[sp-1].ref.String() + mem[sp].ref.String())}
 			sp--
 		case AddInt:
-			mem[sp-1].num = add[int](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = addInt(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint
 			sp--
 		case AddInt8:
-			mem[sp-1].num = add[int8](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = addInt8(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint8
 			sp--
 		case AddInt16:
-			mem[sp-1].num = add[int16](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = addInt16(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint16
 			sp--
 		case AddInt32:
-			mem[sp-1].num = add[int32](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = addInt32(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint32
 			sp--
 		case AddInt64:
-			mem[sp-1].num = add[int64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = addInt64(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint64
 			sp--
 		case AddUint:
-			mem[sp-1].num = add[uint](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = addUint(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = uintOrUintptr(mem[sp-1].ref)
 			sp--
 		case AddUint8:
-			mem[sp-1].num = add[uint8](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = addUint8(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint8
 			sp--
 		case AddUint16:
-			mem[sp-1].num = add[uint16](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = addUint16(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint16
 			sp--
 		case AddUint32:
-			mem[sp-1].num = add[uint32](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = addUint32(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint32
 			sp--
 		case AddUint64:
-			mem[sp-1].num = add[uint64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = addUint64(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint64
 			sp--
 		case AddFloat32:
-			mem[sp-1].num = addf[float32](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = addfFloat32(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zfloat32
 			sp--
 		case AddFloat64:
-			mem[sp-1].num = addf[float64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = addfFloat64(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zfloat64
 			sp--
 
 		// Per-type Sub.
 		case SubInt:
-			mem[sp-1].num = sub[int](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = subInt(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint
 			sp--
 		case SubInt8:
-			mem[sp-1].num = sub[int8](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = subInt8(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint8
 			sp--
 		case SubInt16:
-			mem[sp-1].num = sub[int16](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = subInt16(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint16
 			sp--
 		case SubInt32:
-			mem[sp-1].num = sub[int32](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = subInt32(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint32
 			sp--
 		case SubInt64:
-			mem[sp-1].num = sub[int64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = subInt64(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint64
 			sp--
 		case SubUint:
-			mem[sp-1].num = sub[uint](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = subUint(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = uintOrUintptr(mem[sp-1].ref)
 			sp--
 		case SubUint8:
-			mem[sp-1].num = sub[uint8](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = subUint8(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint8
 			sp--
 		case SubUint16:
-			mem[sp-1].num = sub[uint16](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = subUint16(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint16
 			sp--
 		case SubUint32:
-			mem[sp-1].num = sub[uint32](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = subUint32(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint32
 			sp--
 		case SubUint64:
-			mem[sp-1].num = sub[uint64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = subUint64(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint64
 			sp--
 		case SubFloat32:
-			mem[sp-1].num = subf[float32](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = subfFloat32(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zfloat32
 			sp--
 		case SubFloat64:
-			mem[sp-1].num = subf[float64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = subfFloat64(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zfloat64
 			sp--
 
 		// Per-type Mul.
 		case MulInt:
-			mem[sp-1].num = mul[int](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = mulInt(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint
 			sp--
 		case MulInt8:
-			mem[sp-1].num = mul[int8](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = mulInt8(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint8
 			sp--
 		case MulInt16:
-			mem[sp-1].num = mul[int16](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = mulInt16(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint16
 			sp--
 		case MulInt32:
-			mem[sp-1].num = mul[int32](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = mulInt32(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint32
 			sp--
 		case MulInt64:
-			mem[sp-1].num = mul[int64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = mulInt64(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint64
 			sp--
 		case MulUint:
-			mem[sp-1].num = mul[uint](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = mulUint(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = uintOrUintptr(mem[sp-1].ref)
 			sp--
 		case MulUint8:
-			mem[sp-1].num = mul[uint8](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = mulUint8(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint8
 			sp--
 		case MulUint16:
-			mem[sp-1].num = mul[uint16](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = mulUint16(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint16
 			sp--
 		case MulUint32:
-			mem[sp-1].num = mul[uint32](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = mulUint32(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint32
 			sp--
 		case MulUint64:
-			mem[sp-1].num = mul[uint64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = mulUint64(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint64
 			sp--
 		case MulFloat32:
-			mem[sp-1].num = mulf[float32](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = mulfFloat32(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zfloat32
 			sp--
 		case MulFloat64:
-			mem[sp-1].num = mulf[float64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = mulfFloat64(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zfloat64
 			sp--
 
 		// Per-type Div.
 		case DivInt:
-			mem[sp-1].num = div[int](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = divInt(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint
 			sp--
 		case DivInt8:
-			mem[sp-1].num = div[int8](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = divInt8(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint8
 			sp--
 		case DivInt16:
-			mem[sp-1].num = div[int16](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = divInt16(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint16
 			sp--
 		case DivInt32:
-			mem[sp-1].num = div[int32](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = divInt32(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint32
 			sp--
 		case DivInt64:
-			mem[sp-1].num = div[int64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = divInt64(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint64
 			sp--
 		case DivUint:
-			mem[sp-1].num = div[uint](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = divUint(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = uintOrUintptr(mem[sp-1].ref)
 			sp--
 		case DivUint8:
-			mem[sp-1].num = div[uint8](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = divUint8(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint8
 			sp--
 		case DivUint16:
-			mem[sp-1].num = div[uint16](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = divUint16(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint16
 			sp--
 		case DivUint32:
-			mem[sp-1].num = div[uint32](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = divUint32(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint32
 			sp--
 		case DivUint64:
-			mem[sp-1].num = div[uint64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = divUint64(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint64
 			sp--
 		case DivFloat32:
-			mem[sp-1].num = divf[float32](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = divfFloat32(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zfloat32
 			sp--
 		case DivFloat64:
-			mem[sp-1].num = divf[float64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = divfFloat64(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zfloat64
 			sp--
 
 		// Per-type Rem (integer only).
 		case RemInt:
-			mem[sp-1].num = rem[int](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = remInt(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint
 			sp--
 		case RemInt8:
-			mem[sp-1].num = rem[int8](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = remInt8(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint8
 			sp--
 		case RemInt16:
-			mem[sp-1].num = rem[int16](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = remInt16(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint16
 			sp--
 		case RemInt32:
-			mem[sp-1].num = rem[int32](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = remInt32(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint32
 			sp--
 		case RemInt64:
-			mem[sp-1].num = rem[int64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = remInt64(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zint64
 			sp--
 		case RemUint:
-			mem[sp-1].num = rem[uint](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = remUint(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = uintOrUintptr(mem[sp-1].ref)
 			sp--
 		case RemUint8:
-			mem[sp-1].num = rem[uint8](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = remUint8(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint8
 			sp--
 		case RemUint16:
-			mem[sp-1].num = rem[uint16](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = remUint16(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint16
 			sp--
 		case RemUint32:
-			mem[sp-1].num = rem[uint32](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = remUint32(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint32
 			sp--
 		case RemUint64:
-			mem[sp-1].num = rem[uint64](mem[sp-1].num, mem[sp].num)
+			mem[sp-1].num = remUint64(mem[sp-1].num, mem[sp].num)
 			mem[sp-1].ref = zuint64
 			sp--
 
 		// Per-type Neg.
 		case NegInt:
-			mem[sp].num = neg[int](mem[sp].num)
+			mem[sp].num = negInt(mem[sp].num)
 			mem[sp].ref = zint
 		case NegInt8:
-			mem[sp].num = neg[int8](mem[sp].num)
+			mem[sp].num = negInt8(mem[sp].num)
 			mem[sp].ref = zint8
 		case NegInt16:
-			mem[sp].num = neg[int16](mem[sp].num)
+			mem[sp].num = negInt16(mem[sp].num)
 			mem[sp].ref = zint16
 		case NegInt32:
-			mem[sp].num = neg[int32](mem[sp].num)
+			mem[sp].num = negInt32(mem[sp].num)
 			mem[sp].ref = zint32
 		case NegInt64:
-			mem[sp].num = neg[int64](mem[sp].num)
+			mem[sp].num = negInt64(mem[sp].num)
 			mem[sp].ref = zint64
 		case NegUint:
-			mem[sp].num = neg[uint](mem[sp].num)
+			mem[sp].num = negUint(mem[sp].num)
 			mem[sp].ref = uintOrUintptr(mem[sp].ref)
 		case NegUint8:
-			mem[sp].num = neg[uint8](mem[sp].num)
+			mem[sp].num = negUint8(mem[sp].num)
 			mem[sp].ref = zuint8
 		case NegUint16:
-			mem[sp].num = neg[uint16](mem[sp].num)
+			mem[sp].num = negUint16(mem[sp].num)
 			mem[sp].ref = zuint16
 		case NegUint32:
-			mem[sp].num = neg[uint32](mem[sp].num)
+			mem[sp].num = negUint32(mem[sp].num)
 			mem[sp].ref = zuint32
 		case NegUint64:
-			mem[sp].num = neg[uint64](mem[sp].num)
+			mem[sp].num = negUint64(mem[sp].num)
 			mem[sp].ref = zuint64
 		case NegFloat32:
-			mem[sp].num = negf[float32](mem[sp].num)
+			mem[sp].num = negfFloat32(mem[sp].num)
 			mem[sp].ref = zfloat32
 		case NegFloat64:
-			mem[sp].num = negf[float64](mem[sp].num)
+			mem[sp].num = negfFloat64(mem[sp].num)
 			mem[sp].ref = zfloat64
 
 		// String Greater / Lower.
@@ -3708,7 +3612,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			mem[sp-1] = boolVal(mem[sp-1].num > mem[sp].num)
 			sp--
 		case GreaterFloat32, GreaterFloat64:
-			mem[sp-1] = boolVal(math.Float64frombits(mem[sp-1].num) > math.Float64frombits(mem[sp].num))
+			mem[sp-1] = boolVal(wordFloat(mem[sp-1].num) > wordFloat(mem[sp].num))
 			sp--
 
 		// Per-type Lower.
@@ -3719,24 +3623,24 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			mem[sp-1] = boolVal(mem[sp-1].num < mem[sp].num)
 			sp--
 		case LowerFloat32, LowerFloat64:
-			mem[sp-1] = boolVal(math.Float64frombits(mem[sp-1].num) < math.Float64frombits(mem[sp].num))
+			mem[sp-1] = boolVal(wordFloat(mem[sp-1].num) < wordFloat(mem[sp].num))
 			sp--
 		case GreaterEqualFloat:
-			mem[sp-1] = boolVal(math.Float64frombits(mem[sp-1].num) >= math.Float64frombits(mem[sp].num))
+			mem[sp-1] = boolVal(wordFloat(mem[sp-1].num) >= wordFloat(mem[sp].num))
 			sp--
 		case LowerEqualFloat:
-			mem[sp-1] = boolVal(math.Float64frombits(mem[sp-1].num) <= math.Float64frombits(mem[sp].num))
+			mem[sp-1] = boolVal(wordFloat(mem[sp-1].num) <= wordFloat(mem[sp].num))
 			sp--
 
 		// Immediate operand ops: right-hand constant is in Arg[0].
 		case AddIntImm:
-			mem[sp].num = uint64(int(mem[sp].num) + int(c.A))
+			mem[sp].num = word(int(mem[sp].num) + int(c.A))
 			mem[sp].ref = zint
 		case SubIntImm:
-			mem[sp].num = uint64(int(mem[sp].num) - int(c.A))
+			mem[sp].num = word(int(mem[sp].num) - int(c.A))
 			mem[sp].ref = zint
 		case MulIntImm:
-			mem[sp].num = uint64(int(mem[sp].num) * int(c.A))
+			mem[sp].num = word(int(mem[sp].num) * int(c.A))
 			mem[sp].ref = zint
 		case GreaterIntImm:
 			mem[sp] = boolVal(int(mem[sp].num) > int(c.A))
@@ -3761,9 +3665,9 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 	}
 }
 
-func (m *Machine) restoreFP(fpVal uint64) int {
-	if fpVal&heapSavedFlag != 0 {
-		fp := int(fpVal &^ heapSavedFlag)
+func (m *Machine) restoreFP(fpVal word) int {
+	if fpHeapSaved(fpVal) {
+		fp := fpOf(fpVal)
 		top := len(m.heapFrames) - 1
 		m.heap = m.heapFrames[top]
 		m.heapFrames[top] = nil // clear for GC
@@ -3850,12 +3754,12 @@ func (m *Machine) deferPush(c *Instruction, ip int, mem []Value, fp, sp int) ([]
 		mem = growStack(mem, sp, 3)
 	}
 	mem[sp+1] = Value{num: packDefer(narg, isX, spread)}
-	mem[sp+2] = Value{num: uint64(prevHead)}
+	mem[sp+2] = Value{num: word(prevHead)}
 	// returnIP placeholder, seeded with the defer-site IP so a panic dispatching
 	// the call reports the defer site; Return overwrites it for VM defers.
-	mem[sp+3] = Value{num: uint64(uint32(ip))}
+	mem[sp+3] = Value{num: word(uint32(ip))}
 	sp += 3
-	mem[fp-3].num = uint64(sp) // dh = index of returnIP slot
+	mem[fp-3].num = word(sp) // dh = index of returnIP slot
 	return mem, sp
 }
 
@@ -3864,21 +3768,21 @@ func (m *Machine) deferRet(mem []Value, fp, sp int) ([]Value, int, int) {
 	dh := int(mem[fp-3].num)
 	narg := deferNarg(mem[dh-2].num)
 	val := mem[dh].num
-	returnIP := int(int32(val & 0xFFFFFFFF))
-	nret := int(val >> 32)
+	returnIP := deferRetIP(val)
+	nret := deferRetNret(val)
 	prevHead := int(mem[dh-1].num)
 	retBase := dh - narg - 3
 	copy(mem[retBase:], mem[dh+1:dh+1+nret]) // move return values down
 	clear(mem[retBase+nret:])                // clear stale slots
 	mem = mem[:retBase+nret]
-	mem[fp-3].num = uint64(prevHead)
+	mem[fp-3].num = word(prevHead)
 	sp = len(mem) - 1
 	mem = mem[:cap(mem)]
 	return mem, sp, returnIP
 }
 
 func (m *Machine) panicUnwind(mem *[]Value, fp, sp, ip *int, panicAddr int) (bool, error) {
-	deferRetBits := uint64(panicAddr - 1)
+	deferRetBits := word(panicAddr - 1)
 	*mem = (*mem)[:*sp+1]
 	if *fp == 0 {
 		// Top-level: no call frame to unwind.
@@ -3901,12 +3805,12 @@ func (m *Machine) panicUnwind(mem *[]Value, fp, sp, ip *int, panicAddr int) (boo
 		popDefer := func() (bool, error) {
 			clear((*mem)[retBase:])
 			*mem = (*mem)[:retBase]
-			(*mem)[*fp-3].num = uint64(prevHead)
+			(*mem)[*fp-3].num = word(prevHead)
 			*sp = len(*mem) - 1
 			*mem = (*mem)[:cap(*mem)]
 			return false, nil
 		}
-		if packed&deferStartedFlag != 0 {
+		if deferStarted(packed) {
 			// Body already ran and panicked; skip rather than loop re-running it.
 			return popDefer()
 		}
@@ -3948,9 +3852,9 @@ func (m *Machine) panicUnwind(mem *[]Value, fp, sp, ip *int, panicAddr int) (boo
 		}
 		// VM defer: store panicAddr as return address, push frame.
 		retIPInfo := (*mem)[*fp-2].num
-		nret := int((retIPInfo >> 32) & retNretMask)
-		(*mem)[dh].num = uint64(uint32(panicAddr)) | uint64(nret)<<32
-		(*mem)[dh-2].num |= deferStartedFlag
+		nret := retNret(retIPInfo)
+		(*mem)[dh].num = packDeferRet(panicAddr, nret)
+		(*mem)[dh-2].num = deferSetStarted((*mem)[dh-2].num)
 		prevHeap := m.heap
 		nip := m.resolveIPAndHeap(funcVal)
 		if nip == nilFuncAddr {
@@ -3963,10 +3867,10 @@ func (m *Machine) panicUnwind(mem *[]Value, fp, sp, ip *int, panicAddr int) (boo
 		base := len(*mem)
 		*mem = append(*mem, funcVal)
 		*mem = append(*mem, (*mem)[dh-narg-2:dh-2]...)
-		defFPVal := uint64(*fp)
+		defFPVal := fpWord(*fp, false)
 		if prevHeap != nil {
 			m.heapFrames = append(m.heapFrames, prevHeap)
-			defFPVal |= heapSavedFlag
+			defFPVal = fpWord(*fp, true)
 		}
 		*mem = append(*mem, Value{}, Value{num: deferRetBits}, Value{num: defFPVal})
 		*fp = base + 1 + narg + 3
@@ -3979,15 +3883,15 @@ func (m *Machine) panicUnwind(mem *[]Value, fp, sp, ip *int, panicAddr int) (boo
 	if !m.panicking && !m.goexiting {
 		// Recovered: produce the result values and tear down the frame.
 		retIPInfo := (*mem)[*fp-2].num
-		nret := int((retIPInfo >> 32) & retNretMask)
-		frameBase := int(retIPInfo >> 48)
-		*ip = int(int32(retIPInfo))
+		nret := retNret(retIPInfo)
+		frameBase := retFrameBase(retIPInfo)
+		*ip = retIPOf(retIPInfo)
 		ofp := *fp
 		m.dropIterFrames(ofp)
 		*fp = m.restoreFP((*mem)[*fp-1].num)
 		newBase := ofp - frameBase
 		newSP := newBase + nret
-		if retIPInfo&hasNamedRetFlag != 0 {
+		if retHasFlag(retIPInfo, hasNamedRetFlag) {
 			// A recover returns the current named values, captured or not.
 			finalizeReturns(*mem, ofp, newBase, nret)
 		} else {
@@ -4000,7 +3904,7 @@ func (m *Machine) panicUnwind(mem *[]Value, fp, sp, ip *int, panicAddr int) (boo
 		return false, nil
 	}
 	// Still panicking (or goexiting): tear down frame, continue unwinding parent.
-	frameBase := int((*mem)[*fp-2].num >> 48)
+	frameBase := retFrameBase((*mem)[*fp-2].num)
 	ofp := *fp
 	m.dropIterFrames(ofp)
 	*fp = m.restoreFP((*mem)[*fp-1].num)
@@ -4301,8 +4205,8 @@ func minMax(mem []Value, sp, n int, kind reflect.Kind, isMax bool) int {
 		}
 	case kind == reflect.Float32 || kind == reflect.Float64:
 		for i := best + 1; i <= sp; i++ {
-			fi := math.Float64frombits(mem[i].num)
-			fb := math.Float64frombits(mem[best].num)
+			fi := wordFloat(mem[i].num)
+			fb := wordFloat(mem[best].num)
 			switch {
 			case math.IsNaN(fi):
 				best = i
@@ -5455,7 +5359,7 @@ func appendValues(sb *strings.Builder, lv []Value) {
 			sb.WriteByte(' ')
 		}
 		if !v.ref.IsValid() {
-			fmt.Fprintf(sb, "<%d>", v.num)
+			fmt.Fprintf(sb, "<%v>", v.num)
 		} else {
 			fmt.Fprintf(sb, "%v", v.Interface())
 		}
@@ -5915,16 +5819,16 @@ func typeCycles(t reflect.Type, path map[reflect.Type]bool) bool {
 	return false
 }
 
-func setNumReflect(rv reflect.Value, num uint64) {
+func setNumReflect(rv reflect.Value, num word) {
 	switch rv.Kind() {
 	case reflect.Bool:
 		rv.SetBool(num != 0)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		rv.SetInt(int64(num))
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		rv.SetUint(num)
+		rv.SetUint(uint64(num))
 	case reflect.Float32, reflect.Float64:
-		rv.SetFloat(math.Float64frombits(num))
+		rv.SetFloat(wordFloat(num))
 	}
 }
 

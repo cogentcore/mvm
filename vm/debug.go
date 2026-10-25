@@ -400,12 +400,12 @@ func (m *Machine) walkSegment(mem []Value, fp, ip int, yield func(StackFrame) bo
 			return
 		}
 		retIPInfo := mem[fp-2].num
-		retIP := int(int32(retIPInfo))
+		retIP := retIPOf(retIPInfo)
 		pc = retIP - 1
 		if fp-1 < 0 || fp-1 >= len(mem) {
 			return
 		}
-		fp = int(mem[fp-1].num &^ (1 << 63))
+		fp = fpOf(mem[fp-1].num)
 	}
 	// Synthetic outermost frame for the top-level entry sequence (only
 	// when it carries a real source position; CallFunc-synthesized Call
@@ -445,8 +445,8 @@ func (m *Machine) DumpCallStack(w io.Writer, di *DebugInfo) {
 			break
 		}
 		retIPInfo := mem[fp-2].num
-		nret := int((retIPInfo >> 32) & 0xFFFF)
-		narg := int(retIPInfo >> 48)
+		nret := retNret(retIPInfo)
+		narg := retFrameBase(retIPInfo)
 
 		DumpFrame(w, mem, m.code, fp, sp, narg, nret, di)
 
@@ -456,7 +456,7 @@ func (m *Machine) DumpCallStack(w io.Writer, di *DebugInfo) {
 			break
 		}
 		fpVal := mem[fp-1].num
-		fp = int(fpVal &^ (1 << 63)) // mask off envSavedFlag
+		fp = fpOf(fpVal) // mask off envSavedFlag
 	}
 
 	// Print globals with names if available.
@@ -513,7 +513,7 @@ func printSlot(w io.Writer, addr int, role string, v Value, symName, marker stri
 		valStr = formatValue(v)
 	case v.num != 0:
 		typStr = "raw"
-		valStr = strconv.FormatUint(v.num, 10)
+		valStr = strconv.FormatUint(uint64(v.num), 10)
 	default:
 		typStr = "zero"
 		valStr = "0"

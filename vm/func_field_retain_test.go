@@ -60,7 +60,7 @@ func TestFuncFieldSetStrongKeep(t *testing.T) {
 	tbl.setStrongKeep(p, v1)
 	tbl.setStrongKeep(p, v2)
 	if got, _ := tbl.get(p); got.num != 2 {
-		t.Errorf("strong entry not overwritten: got num=%d, want 2", got.num)
+		t.Errorf("strong entry not overwritten: got num=%v, want 2", got.num)
 	}
 
 	// Live weak entry: must be kept (self-pruning form).
@@ -68,7 +68,7 @@ func TestFuncFieldSetStrongKeep(t *testing.T) {
 	tbl.setWeak(p, ref)
 	tbl.setStrongKeep(p, v2)
 	if got, _ := tbl.get(p); got.num != 1 {
-		t.Errorf("live weak entry replaced: got num=%d, want 1", got.num)
+		t.Errorf("live weak entry replaced: got num=%v, want 1", got.num)
 	}
 	runtime.KeepAlive(ref)
 
@@ -84,7 +84,7 @@ func TestFuncFieldSetStrongKeep(t *testing.T) {
 	}
 	tbl.setStrongKeep(p, v2)
 	if got, ok := tbl.get(p); !ok || got.num != 2 {
-		t.Errorf("dead-weak entry not overwritten: got num=%d ok=%v, want 2 true", got.num, ok)
+		t.Errorf("dead-weak entry not overwritten: got num=%v ok=%v, want 2 true", got.num, ok)
 	}
 }
 
@@ -111,7 +111,7 @@ func TestFuncFieldStrongCleanup(t *testing.T) {
 	gen2 := tbl.setStrongKeep(p, Value{num: 8})
 	tbl.pruneStrong(p, gen)
 	if got, ok := tbl.get(p); !ok || got.num != 8 {
-		t.Fatalf("predecessor cleanup deleted successor: got num=%d ok=%v", got.num, ok)
+		t.Fatalf("predecessor cleanup deleted successor: got num=%v ok=%v", got.num, ok)
 	}
 
 	// Dropping the funcval must prune the entry via the runtime cleanup.
