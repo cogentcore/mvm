@@ -1745,7 +1745,7 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 					for i := range rin {
 						rin[i] = mem[dh-narg-2+i].Reflect()
 					}
-					coerceInterfaceArgs(rin, rv.Type())
+					coerceInterfaceArgs(rin, rv.Type(), deferSpread(packed))
 					m.wrapFuncArgs(rin, mem[dh-narg-2:dh-2], rv.Type(), 0, deferSpread(packed))
 					// Flag started so a panic inside isn't re-run by panicUnwind.
 					// invokeNative makes the panic catchable by an enclosing
@@ -2184,7 +2184,7 @@ func (m *Machine) panicUnwind(mem *[]Value, fp, sp, ip *int, panicAddr int) (boo
 			for i := range rin {
 				rin[i] = (*mem)[dh-narg-2+i].Reflect()
 			}
-			coerceInterfaceArgs(rin, rv.Type())
+			coerceInterfaceArgs(rin, rv.Type(), deferSpread(packed))
 			m.wrapFuncArgs(rin, (*mem)[dh-narg-2:dh-2], rv.Type(), 0, deferSpread(packed))
 			// A panic here supersedes the in-flight one (Go); invokeNative
 			// captures it as an mvm panic rather than letting it escape raw.
@@ -3488,7 +3488,7 @@ func (m *Machine) newGoroutine(fval Value, args []Value, spread bool) (panicked 
 		for i, a := range args {
 			in[i] = a.Reflect()
 		}
-		coerceInterfaceArgs(in, rv.Type())
+		coerceInterfaceArgs(in, rv.Type(), spread)
 		m.wrapFuncArgs(in, args, rv.Type(), 0, spread)
 		if spread {
 			in[len(in)-1] = m.unwrapVariadicIface(in[len(in)-1])
@@ -4340,13 +4340,30 @@ func paramTypeFor(funcType reflect.Type, i int) reflect.Type {
 	}
 }
 
-func coerceInterfaceArgs(in []reflect.Value, funcType reflect.Type) {
+// argParamType returns the type of the parameter of the argument i of the
+// arguments in of a call of a func of type funcType: for the last argument
+// of a call that passes the variadic arguments as a slice (spread), that
+// of the slice.
+func argParamType(funcType reflect.Type, in []reflect.Value, i int, spread bool) reflect.Type {
+	if spread && funcType.IsVariadic() && i == len(in)-1 {
+		return funcType.In(funcType.NumIn() - 1)
+	}
+	return paramTypeFor(funcType, i)
+}
+
+// coerceInterfaceArgs converts the arguments in of a call of a func of type
+// funcType to the types of their parameters where they differ: interface
+// values to their concrete values, and values of named or numeric types to
+// the parameter type. spread is whether the call passes the variadic
+// arguments as a slice (reflect.CallSlice), whose last argument is then
+// that slice.
+func coerceInterfaceArgs(in []reflect.Value, funcType reflect.Type, spread bool) {
 	for i, rv := range in {
 		if rv.IsValid() && !rv.CanInterface() {
 			rv = runtype.Exportable(rv)
 			in[i] = rv
 		}
-		paramType := paramTypeFor(funcType, i)
+		paramType := argParamType(funcType, in, i, spread)
 		if paramType == nil {
 			continue
 		}
@@ -4378,10 +4395,7 @@ func coerceInterfaceArgs(in []reflect.Value, funcType reflect.Type) {
 // whose last argument is then that slice.
 func (m *Machine) wrapFuncArgs(in []reflect.Value, args []Value, funcType reflect.Type, np int, spread bool) {
 	for i := np; i < len(in); i++ {
-		paramType := paramTypeFor(funcType, i)
-		if spread && funcType.IsVariadic() && i == len(in)-1 {
-			paramType = funcType.In(funcType.NumIn() - 1)
-		}
+		paramType := argParamType(funcType, in, i, spread)
 		if paramType == nil || paramType.Kind() != reflect.Func {
 			continue
 		}
@@ -4512,7 +4526,7 @@ func (m *Machine) callIndirect(c *Instruction, fval Value, fp int) (nip, ctl int
 			in[i+np] = mem[sp-narg+1+i].Reflect()
 		}
 		ifaceWB := m.bridgeArgs(in, funcType, rv, np)
-		coerceInterfaceArgs(in, funcType)
+		coerceInterfaceArgs(in, funcType, c.B&CallSpreadFlag != 0)
 		m.wrapFuncArgs(in, mem[sp-narg+1:sp+1], funcType, np, c.B&CallSpreadFlag != 0)
 		sp -= narg + 1
 		// Sync mem/fp/ip into the Machine so native funcs that
