@@ -82,6 +82,12 @@ func ifaceBearingWalk(t reflect.Type, seen map[reflect.Type]bool) bool {
 // map write" fatal).
 const maxMapHops = 1
 
+// maxPtrHops gates pointer and slice traversal by heap-indirection depth
+// likewise: the boxes of an argument are near it, while walking all that a
+// pointer reaches, such as the whole widget tree of a GUI from one widget,
+// at each native call makes building a large graph quadratic.
+const maxPtrHops = 4
+
 // deepUnboxIface returns v with nested vm.Iface boxes replaced by their
 // concrete values, so native reflect walks (DeepEqual, fmt) see real Go values.
 // Value types (struct/array/interface) are copied on change only; reference
@@ -140,7 +146,7 @@ func (m *Machine) deepUnboxIface(v reflect.Value, depth, hops int, seen *unboxSe
 		}
 		return v, false
 	case reflect.Slice:
-		if v.IsNil() || !ifaceBearing(t) {
+		if v.IsNil() || !ifaceBearing(t) || hops > maxPtrHops {
 			return v, false
 		}
 		if seen.seenBefore(v.Pointer(), t) {
@@ -200,7 +206,7 @@ func (m *Machine) deepUnboxIface(v reflect.Value, depth, hops int, seen *unboxSe
 		}
 		return out, true
 	case reflect.Pointer:
-		if v.IsNil() || !ifaceBearing(t) {
+		if v.IsNil() || !ifaceBearing(t) || hops > maxPtrHops {
 			return v, false
 		}
 		if seen.seenBefore(v.Pointer(), t) {
