@@ -17,6 +17,12 @@ func wordFloat(w word) float64 { return math.Float64frombits(w) }
 // floatWord returns the word that holds f.
 func floatWord(f float64) word { return math.Float64bits(f) }
 
+// wordUint returns the uint64 that w holds.
+func wordUint(w word) uint64 { return w }
+
+// uintWord returns the word that holds u.
+func uintWord(u uint64) word { return u }
+
 // getf32 extracts a float32 from a Value's uint64 storage (float64-bits encoding).
 func getf32(n word) float32 { return float32(math.Float64frombits(n)) }
 

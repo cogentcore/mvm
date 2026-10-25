@@ -178,7 +178,7 @@ func numBits(rv reflect.Value) word {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return word(rv.Int())
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return word(rv.Uint())
+		return uintWord(rv.Uint())
 	case reflect.Float32, reflect.Float64:
 		return floatWord(rv.Float())
 	}
@@ -264,7 +264,7 @@ func (v Value) IsValid() bool { return v.ref.IsValid() }
 func (v Value) Int() int64 { return int64(v.num) }
 
 // Uint returns v's value as uint64.
-func (v Value) Uint() uint64 { return uint64(v.num) }
+func (v Value) Uint() uint64 { return wordUint(v.num) }
 
 // Float returns v's value as float64.
 func (v Value) Float() float64 { return wordFloat(v.num) }
@@ -304,7 +304,7 @@ func (v Value) Reflect() reflect.Value {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		r.SetInt(int64(v.num))
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		r.SetUint(uint64(v.num))
+		r.SetUint(wordUint(v.num))
 	case reflect.Float32, reflect.Float64:
 		r.SetFloat(wordFloat(v.num))
 	}

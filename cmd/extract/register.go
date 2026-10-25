@@ -15,6 +15,7 @@ import (
 	"go/types"
 	"io"
 	"log"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -73,7 +74,7 @@ func runRegister(pkgName string, paths []string) error {
 			return fmt.Errorf("%s: %w", pkg.path, err)
 		}
 		name := "gen_" + strings.NewReplacer("/", "_", ".", "_").Replace(pkg.path) + ".go"
-		if err := os.WriteFile(name, src, 0o644); err != nil {
+		if err := os.WriteFile(name, src, 0o644); err != nil { //nolint:gosec // G306: generated source, meant to be readable
 			return err
 		}
 	}
@@ -362,9 +363,7 @@ func shimSource(pkg *regPkg, generics []string, constraints, bound map[string]bo
 				refs[n] = true
 			}
 		}
-		for k, v := range u.imports {
-			imports[k] = v
-		}
+		maps.Copy(imports, u.imports)
 	}
 	if len(srcs) == 0 {
 		return "", nil, nil
@@ -394,7 +393,7 @@ func shimSource(pkg *regPkg, generics []string, constraints, bound map[string]bo
 // their own.
 func stripLineComments(src string) string {
 	var out []string
-	for _, l := range strings.Split(src, "\n") {
+	for l := range strings.SplitSeq(src, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(l), "//") {
 			continue
 		}

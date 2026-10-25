@@ -40,4 +40,4 @@ const synthJSMethods = false
 
 // synthMethodHandler returns nil: native targets dispatch interpreted methods
 // through stub pools, and wasm does not dispatch them natively.
-func synthMethodHandler(m *Machine, t *mtype.Type, s synthMethodSpec) any { return nil }
+func synthMethodHandler(_ *Machine, _ *mtype.Type, _ synthMethodSpec) any { return nil }

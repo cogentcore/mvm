@@ -513,7 +513,7 @@ func printSlot(w io.Writer, addr int, role string, v Value, symName, marker stri
 		valStr = formatValue(v)
 	case v.num != 0:
 		typStr = "raw"
-		valStr = strconv.FormatUint(uint64(v.num), 10)
+		valStr = strconv.FormatUint(wordUint(v.num), 10)
 	default:
 		typStr = "zero"
 		valStr = "0"
