@@ -2,6 +2,7 @@ package vm
 
 import (
 	"reflect"
+	"slices"
 	"sync"
 
 	"github.com/cogentcore/mvm/internal/runtype"
@@ -10,26 +11,31 @@ import (
 // maxUnboxDepth bounds the deep-unbox walk on pathological data.
 const maxUnboxDepth = 64
 
-// unboxSeen identifies a pointer-like node already visited in one walk.
-// Cyclic graphs (e.g. testing.T parent/sub links) would otherwise be
-// re-walked at every depth up to maxUnboxDepth -- an exponential spin.
+// unboxSeen records the pointer-like nodes already visited in one walk, by
+// address and type. Cyclic graphs (e.g. testing.T parent/sub links) would
+// otherwise be re-walked at every depth up to maxUnboxDepth -- an
+// exponential spin -- and nodes reached through several paths, such as the
+// widgets of a tree, would be walked once for each. It is shared by the
+// whole walk through a pointer. The address keys a map of its own, of the
+// types seen there: a key of a struct with a reflect.Type is hashed field by
+// field under goscript, which made each lookup a scan of the whole map.
 type unboxSeen struct {
-	ptr uintptr
-	t   reflect.Type
+	types map[uintptr][]reflect.Type
 }
 
 var ifaceBearingCache sync.Map // reflect.Type -> bool
 
-// seenBefore records k in seen (allocating it on first use), reporting
-// whether k was already visited.
-func seenBefore(seen *map[unboxSeen]bool, k unboxSeen) bool {
-	if (*seen)[k] {
+// seenBefore records the node at ptr of type t in seen, reporting whether it
+// was already visited.
+func (seen *unboxSeen) seenBefore(ptr uintptr, t reflect.Type) bool {
+	if seen.types == nil {
+		seen.types = map[uintptr][]reflect.Type{}
+	}
+	ts := seen.types[ptr]
+	if slices.Contains(ts, t) {
 		return true
 	}
-	if *seen == nil {
-		*seen = map[unboxSeen]bool{}
-	}
-	(*seen)[k] = true
+	seen.types[ptr] = append(ts, t)
 	return false
 }
 
@@ -86,7 +92,10 @@ const maxMapHops = 1
 // not by-value struct/array), gating map iteration (see maxMapHops).
 // The bool reports a REPLACED value (value types only); false from a
 // reference type may still mean its contents were unboxed in place.
-func (m *Machine) deepUnboxIface(v reflect.Value, depth, hops int, seen map[unboxSeen]bool) (reflect.Value, bool) {
+func (m *Machine) deepUnboxIface(v reflect.Value, depth, hops int, seen *unboxSeen) (reflect.Value, bool) {
+	if seen == nil {
+		seen = &unboxSeen{}
+	}
 	if depth > maxUnboxDepth || !v.IsValid() {
 		return v, false
 	}
@@ -134,7 +143,7 @@ func (m *Machine) deepUnboxIface(v reflect.Value, depth, hops int, seen map[unbo
 		if v.IsNil() || !ifaceBearing(t) {
 			return v, false
 		}
-		if seenBefore(&seen, unboxSeen{v.Pointer(), t}) {
+		if seen.seenBefore(v.Pointer(), t) {
 			return v, false
 		}
 		// In place: elements are settable through the data pointer, and the
@@ -194,7 +203,7 @@ func (m *Machine) deepUnboxIface(v reflect.Value, depth, hops int, seen map[unbo
 		if v.IsNil() || !ifaceBearing(t) {
 			return v, false
 		}
-		if seenBefore(&seen, unboxSeen{v.Pointer(), t}) {
+		if seen.seenBefore(v.Pointer(), t) {
 			return v, false
 		}
 		// In place: the callee must see the SAME pointer, or its writes
@@ -208,7 +217,7 @@ func (m *Machine) deepUnboxIface(v reflect.Value, depth, hops int, seen map[unbo
 		if v.IsNil() || !ifaceBearing(t) || hops > maxMapHops {
 			return v, false
 		}
-		if seenBefore(&seen, unboxSeen{v.Pointer(), t}) {
+		if seen.seenBefore(v.Pointer(), t) {
 			return v, false
 		}
 		// In place (the map may be aliased elsewhere): collect changed
