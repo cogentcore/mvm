@@ -560,7 +560,9 @@ types whose `reflect.Type` is shared with the underlying type). `bridgeArgs(in,
 funcType, fn)` then, per argument: retypes a pointer-to-interpreted-interface to
 the synthesized interface rtype (`bridgePtrToIface`, a gated allowlist, for
 `errors.As`), otherwise unwraps the `Iface` to its concrete (synthesized) value
-via `bridgeIface`.
+via `bridgeIface`. `deepUnboxIface` then replaces the boxes nested in each
+argument, skipping the values of native types, whose memory holds none; see
+[ADR-024](../decisions/ADR-024-deep-unbox-native-args.md).
 
 **Pointer-receiver method dispatch.** `IfaceCall` resolves the method set via
 `Type.ResolveMethodType`, which walks to `ElemType.Methods` for pointer types,
