@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mvm-sh/mvm/interp"
-	"github.com/mvm-sh/mvm/lang/golang"
-	"github.com/mvm-sh/mvm/vm"
+	"github.com/cogentcore/mvm/interp"
+	"github.com/cogentcore/mvm/lang/golang"
+	"github.com/cogentcore/mvm/vm"
 )
 
 // TestInterrupt checks that Interrupt stops running code, as Ctrl-C does
