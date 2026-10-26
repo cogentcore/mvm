@@ -43,8 +43,10 @@ func SetFieldEmbedded(_ reflect.Type, _ int, _, _ string, _ bool) {
 // SetMethod installs the method name, of signature sig (without receiver), on
 // the values of the named type t, so that calling it calls fn with a pointer
 // to the value and the arguments. ptrRecv is whether only *t has the method.
+// The parameter fn keeps its name: the meta.json of the goscript override
+// names it as an async callback, so that goscript does not make it sync.
 func SetMethod(_ reflect.Type, _ string, _ reflect.Type, _ bool,
-	_ func(recv reflect.Value, args []reflect.Value) []reflect.Value,
+	fn func(recv reflect.Value, args []reflect.Value) []reflect.Value, //nolint:revive // see above
 ) {
 	panic(errNative)
 }
