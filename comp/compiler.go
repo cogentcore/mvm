@@ -68,6 +68,10 @@ type Compiler struct {
 
 	genStart int // code offset at the start of the current generate() pass
 
+	// labelKeys are the keys of the label symbols of the compiled code, which
+	// are dropped when the next unit compiles (see purgeLabels).
+	labelKeys []string
+
 	// Defer brackets the target package's var inits so eval runs imported init()
 	// funcs before them (Go init order); zero when no reordering is needed.
 	Defer VarDeferral
@@ -288,6 +292,7 @@ func (c *Compiler) aliasTargetTopLevel(pkgPath string) {
 // Code and data are added incrementally in c.Code and C.Data.
 func (c *Compiler) Compile(name, src string) (err error) {
 	c.ResetUnitLabels()
+	c.purgeLabels()
 	c.PurgeUnitLocals()
 	// On failure, roll back to the pre-compile state so a half-compiled unit
 	// can't corrupt the next compile on this reused Compiler.
@@ -319,12 +324,28 @@ func (c *Compiler) Compile(name, src string) (err error) {
 	return c.finishCompile(remaining, targetTag)
 }
 
+// purgeLabels drops the label symbols of the code compiled so far. Labels
+// are jump targets within a unit, whose names, such as for0#e, start again
+// in each unit (see ResetUnitLabels), so a label of an earlier unit must not
+// be taken for the label of the same name of this one: a jump to it would
+// go into the code of the earlier unit.
+func (c *Compiler) purgeLabels() {
+	for _, k := range c.labelKeys {
+		if s, ok := c.Symbols[k]; ok && s.Kind == symbol.Label {
+			delete(c.Symbols, k)
+			c.Seg.Del(k)
+		}
+	}
+	c.labelKeys = c.labelKeys[:0]
+}
+
 // CompileFiles compiles several in-memory source files as a single main-package
 // unit (Phase 1 across all files, then Phase 2 code-gen), so top-level symbols
 // declared in one file are visible to the others regardless of file or
 // declaration order.
 func (c *Compiler) CompileFiles(sources []goparser.PackageSource) (err error) {
 	c.ResetUnitLabels()
+	c.purgeLabels()
 	c.PurgeUnitLocals()
 	snap := c.SnapshotUnit()
 	cg := c.snapshotCodegen()
@@ -2969,7 +2990,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						addressedSlots = addressedSlots[:top]
 					}
 				}
-				c.SymSet(c.qualifyLabel(t.Str), &symbol.Symbol{Kind: symbol.Label, Value: vm.ValueOf(lc)})
+				key := c.qualifyLabel(t.Str)
+				c.SymSet(key, &symbol.Symbol{Kind: symbol.Label, Value: vm.ValueOf(lc)})
+				c.labelKeys = append(c.labelKeys, key)
 			}
 
 		case lang.Len:
