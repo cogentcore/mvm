@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mvm-sh/mvm/interp"
-	"github.com/mvm-sh/mvm/lang/golang"
+	"github.com/cogentcore/mvm/interp"
+	"github.com/cogentcore/mvm/lang/golang"
 )
 
 // TestDiagnose checks the source positions and messages of the errors of
