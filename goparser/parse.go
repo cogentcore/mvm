@@ -315,28 +315,73 @@ func (p *Parser) rebuildSeg() {
 	}
 }
 
-func (p *Parser) errAt(tok Token, format string, args ...any) error {
-	msg := fmt.Sprintf(format, args...)
-	if loc := p.Sources.FormatPos(tok.Pos); loc != "" {
-		return fmt.Errorf("%s: %s", loc, msg)
+// PosError is an error at a position of the source code, which it keeps,
+// so that tools can show where it is (see interp.Interp.Diagnose).
+type PosError struct {
+	// Pos is the position, in the position space of the Sources.
+	Pos int
+
+	// Loc is the position as name:line:col, or "" if not known.
+	Loc string
+
+	// Msg is the message, without the position.
+	Msg string
+
+	// Err is an error that it wraps, if any, whose message starts Msg.
+	Err error
+}
+
+// NewPosError returns a new [PosError] at the given position of the given
+// sources, with the given message, which wraps the given error if non-nil.
+func NewPosError(srcs scan.Sources, pos int, err error, msg string) *PosError {
+	switch {
+	case err != nil && msg == "":
+		msg = err.Error()
+	case err != nil:
+		msg = err.Error() + ": " + msg
 	}
-	return errors.New(msg)
+	return &PosError{Pos: pos, Loc: srcs.FormatPos(pos), Msg: msg, Err: err}
+}
+
+func (e *PosError) Error() string {
+	if e.Loc == "" {
+		return e.Msg
+	}
+	return e.Loc + ": " + e.Msg
+}
+
+func (e *PosError) Unwrap() error { return e.Err }
+
+// SourcePos returns the position of the error, in the position space of
+// the Sources.
+func (e *PosError) SourcePos() int { return e.Pos }
+
+func (p *Parser) errAt(tok Token, format string, args ...any) error {
+	return NewPosError(p.Sources, tok.Pos, nil, fmt.Sprintf(format, args...))
 }
 
 // wrapAt wraps base (preserving it for errors.Is) with the source position of tok and a message.
 func (p *Parser) wrapAt(tok Token, base error, format string, args ...any) error {
-	msg := fmt.Sprintf(format, args...)
-	if loc := p.Sources.FormatPos(tok.Pos); loc != "" {
-		return fmt.Errorf("%s: %w: %s", loc, base, msg)
-	}
-	return fmt.Errorf("%w: %s", base, msg)
+	return NewPosError(p.Sources, tok.Pos, base, fmt.Sprintf(format, args...))
 }
 
 func (p *Parser) scan(s string, endSemi bool) (out Tokens, err error) {
-	return p.scanAt(0, s, endSemi)
+	return p.scanTokens(0, s, endSemi)
 }
 
+// scanAt scans s, which is at the given position of the Sources: the
+// errors of scanning are a [PosError] at their position in the Sources.
 func (p *Parser) scanAt(basePos int, s string, endSemi bool) (out Tokens, err error) {
+	out, err = p.scanTokens(basePos, s, endSemi)
+	var se *scan.Error
+	if errors.As(err, &se) {
+		err = NewPosError(p.Sources, basePos+se.Pos, se.Err, "")
+	}
+	return out, err
+}
+
+// scanTokens scans s, with the positions of its tokens offset by basePos.
+func (p *Parser) scanTokens(basePos int, s string, endSemi bool) (out Tokens, err error) {
 	toks, err := p.Scan(s, endSemi)
 	if err != nil {
 		return out, err
