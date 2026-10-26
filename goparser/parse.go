@@ -74,7 +74,7 @@ type Parser struct {
 	inForInit      bool                      // true while parsing for-init or range clause (marks LoopVar)
 	rangeAssign    Tokens                    // assign-form range per-iteration assigns, stashed for parseFor
 	blockDepth     int                       // nesting depth of function bodies and loops (>0 discards unused expr-statement values)
-	noUnitValue    bool                      // the last statement of the last parsed REPL source is a for loop (see isNoValueStmt)
+	noUnitValue    bool                      // the last statement of the last parsed REPL source has no value (see UnitValue)
 	instDepth      int                       // nesting depth of generic instantiations
 	buildCtx       *buildContext             // build constraint context for file filtering
 	embeds         map[string][]byte         // //go:embed file bytes by canonical var key
@@ -468,17 +468,28 @@ func (p *Parser) scanDecls(src string) ([]Tokens, error) {
 
 // UnitValue returns whether the last statement of the last parsed REPL
 // source can have a value, which is then the value that its Eval returns.
-// A for loop has none: its body discards the values of its expression
-// statements, and the values that it leaves on the stack are its own.
+// A block-like statement, such as an if, switch or for, has none, nor do
+// the other statements that are not expressions or assignments, such as
+// go and return: values that they leave on the stack are not theirs, such
+// as the last index of a loop, and the last global is returned when the
+// stack is empty.
 func (p *Parser) UnitValue() bool { return !p.noUnitValue }
 
 // isNoValueStmt returns whether the given top-level statement is one that
-// has no value: a for loop, possibly labeled.
+// has no value (see [Parser.UnitValue]), possibly labeled.
 func isNoValueStmt(toks Tokens) bool {
 	if len(toks) > 2 && toks[0].Tok == lang.Ident && toks[1].Tok == lang.Colon {
 		toks = toks[2:] // a labeled statement
 	}
-	return len(toks) > 0 && toks[0].Tok == lang.For
+	if len(toks) == 0 {
+		return false
+	}
+	switch toks[0].Tok {
+	case lang.If, lang.Switch, lang.Select, lang.For, lang.BraceBlock,
+		lang.Go, lang.Defer, lang.Goto, lang.Break, lang.Continue, lang.Return:
+		return true
+	}
+	return false
 }
 
 // ParseOneStmt parses a single pre-scanned statement token slice.
