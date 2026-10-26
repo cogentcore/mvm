@@ -22,6 +22,9 @@ func TestDiagnose(t *testing.T) {
 		{"a := 10\nb := 12.5\nc := a + b", 3, 8, "invalid operation: mismatched types int and float64", false},
 		{"s := []int{1, 2}\ni := 5\nx := s[i]", 3, 7, "panic: runtime error: index out of range", true},
 		{"x := 1\ny := (x", 2, 6, "", false},
+		{"x := 1\ny := x +", 2, 8, "missing operand after +", false},
+		{"x := 1\nx(2)", 2, 2, "invalid operation: cannot call non-function x (type int)", false},
+		{"var x any = \"a\"\nn := x.(int)", 2, 7, "panic: interface conversion: interface {} is string, not int", true},
 	}
 	for _, test := range tests {
 		i := interp.NewInterpreter(golang.GoSpec)

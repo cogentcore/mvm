@@ -236,6 +236,13 @@ func FormatPanic(r any) (string, bool) {
 // Error renders the verbose layout (header + snippet + mvm stack) using the
 // DebugInfo captured at panic time. Falls back to "panic: <raw>" if no
 // DebugInfo was captured.
+// Unwrap returns the value of the panic if it is an error, so that
+// errors.Is and errors.As find it.
+func (e *PanicError) Unwrap() error {
+	err, _ := e.Raw.(error)
+	return err
+}
+
 func (e *PanicError) Error() string {
 	di := e.DI
 	var b strings.Builder
