@@ -2,6 +2,7 @@ package vm
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -551,10 +552,58 @@ func formatValue(v Value) string {
 // machines: whichever reaches a safepoint first services it.
 var dumpRequested atomic.Bool
 
+// attention is the number of pending requests that a machine must service at
+// a safepoint: a state dump, and the interrupts of machines (see
+// Machine.Interrupt). The safepoints check it with a single load.
+var attention atomic.Int32
+
 // RequestStateDump asks the running VM to dump its execution state at the next
 // safepoint. Safe from a signal handler or other goroutine; the dump runs on the
 // VM goroutine. Fires only while some machine is executing interpreted code.
-func RequestStateDump() { dumpRequested.Store(true) }
+func RequestStateDump() {
+	if dumpRequested.CompareAndSwap(false, true) {
+		attention.Add(1)
+	}
+}
+
+// ErrInterrupted is the value of the panic that stops the code that a
+// machine runs when it is interrupted (see Machine.Interrupt).
+var ErrInterrupted = errors.New("interrupted")
+
+// Interrupt asks the machine, and the machines of the goroutines that its
+// code started, to stop running the code, by a panic with [ErrInterrupted]
+// at the next safepoint: a loop back-edge or a call. It is safe to call
+// from a signal handler or another goroutine, as for Ctrl-C. A native call
+// that blocks is not interrupted until it returns.
+func (m *Machine) Interrupt() {
+	if m.interrupt != nil && m.interrupt.CompareAndSwap(false, true) {
+		attention.Add(1)
+	}
+}
+
+// ClearInterrupt clears a request to interrupt the machine that is not
+// serviced, as one made when no code was running.
+func (m *Machine) ClearInterrupt() {
+	if m.interrupt != nil && m.interrupt.CompareAndSwap(true, false) {
+		attention.Add(-1)
+	}
+}
+
+// attend services the requests of attention at a safepoint: a state dump,
+// and an interrupt of the machine, which it raises as a panic, returning
+// true. Out of line so that the safepoints stay a load and a branch.
+func (m *Machine) attend(ip, fp int, mem []Value) bool {
+	if dumpRequested.Load() {
+		m.handleDumpReq(ip, fp, mem)
+	}
+	if m.interrupt != nil && m.interrupt.CompareAndSwap(true, false) {
+		attention.Add(-1)
+		m.panicking = true
+		m.panicVal = Value{ref: reflect.ValueOf(ErrInterrupted)}
+		return true
+	}
+	return false
+}
 
 // safepointHook, if non-nil, drains OS interrupts (Ctrl-C) on the call opcodes.
 // mvm test uses it instead of a parked watcher goroutine, which would otherwise
@@ -588,6 +637,7 @@ func (m *Machine) callSafepoint(ip, fp int, mem []Value, ctr uint) uint {
 // line so the safepoint check stays a cheap load+branch.
 func (m *Machine) handleDumpReq(ip, fp int, mem []Value) {
 	if dumpRequested.CompareAndSwap(true, false) {
+		attention.Add(-1)
 		m.dumpState(ip, fp, mem)
 	}
 }

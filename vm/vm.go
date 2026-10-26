@@ -443,6 +443,7 @@ type Machine struct {
 	synthReleases   []func() // nil this Machine's stub-pool handler slots.
 
 	fault         *goroutineFault // shared goroutine-panic sink, lazily created on first `go`
+	interrupt     *atomic.Bool    // interrupt request, shared with the machines of its goroutines (see Interrupt)
 	faultContinue bool            // policy seed copied into fault when it is created
 	isRoot        bool            // the top-level machine; only it aborts channel waits on a fault
 
@@ -541,7 +542,9 @@ const (
 )
 
 // NewMachine returns a pointer on a new Machine.
-func NewMachine() *Machine { return &Machine{in: os.Stdin, out: os.Stdout, err: os.Stderr} }
+func NewMachine() *Machine {
+	return &Machine{in: os.Stdin, out: os.Stdout, err: os.Stderr, interrupt: new(atomic.Bool)}
+}
 
 // SetIO sets the I/O streams for the machine.
 func (m *Machine) SetIO(in io.Reader, out, err io.Writer) { m.in = in; m.out = out; m.err = err }
@@ -1179,9 +1182,11 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			}
 			sp--
 		case Call:
-			// State-dump safepoint: covers recursion that never hits a back-edge.
-			if dumpRequested.Load() {
-				m.handleDumpReq(ip, fp, mem)
+			// Safepoint for a state dump or an interrupt: covers recursion
+			// that never hits a back-edge.
+			if attention.Load() != 0 && m.attend(ip, fp, mem) {
+				ip = m.stageUnwind(ip, fp, mem)
+				continue
 			}
 			// Interrupt poll, gated so mvm run (no hook) pays only a predicted
 			// branch; off the loop back-edge so pure compute loops are unaffected.
@@ -1304,6 +1309,10 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			ip = nip
 			continue
 		case CallImm:
+			if attention.Load() != 0 && m.attend(ip, fp, mem) {
+				ip = m.stageUnwind(ip, fp, mem)
+				continue
+			}
 			if safepointHook != nil {
 				safepointCtr = m.callSafepoint(ip, fp, mem, safepointCtr)
 			}
@@ -1349,6 +1358,10 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 		case CallImmFast:
 			// Fast-path CallImm: emitted when no callee param has reflect Kind
 			// Struct or Array, so detachByValueArgs would be a no-op.
+			if attention.Load() != 0 && m.attend(ip, fp, mem) {
+				ip = m.stageUnwind(ip, fp, mem)
+				continue
+			}
 			if safepointHook != nil {
 				safepointCtr = m.callSafepoint(ip, fp, mem, safepointCtr)
 			}
@@ -1573,12 +1586,13 @@ func (m *Machine) runLoop(traceFlags uint8, panicAddr, deferRetAddr int, deferRe
 			}
 			sp -= 2
 		case Jump:
-			// State-dump safepoint at loop back-edges (backward jumps), avoiding a
-			// per-instruction poll. No interrupt poll here: it would tax the hottest
-			// path of a pure compute loop. The poll lives on the call opcodes, which
-			// any non-trivial loop body reaches.
-			if c.A < 0 && dumpRequested.Load() {
-				m.handleDumpReq(ip, fp, mem)
+			// Safepoint at loop back-edges (backward jumps), for a state dump or
+			// an interrupt, so that a loop without calls can be interrupted: a
+			// single load of attention, avoiding a per-instruction poll. The
+			// hook of the OS interrupts lives on the call opcodes.
+			if c.A < 0 && attention.Load() != 0 && m.attend(ip, fp, mem) {
+				ip = m.stageUnwind(ip, fp, mem)
+				continue
 			}
 			ip += int(c.A)
 			continue
@@ -2995,6 +3009,7 @@ func (t *typesIndex) lookup(globals []Value, rt reflect.Type) *mtype.Type {
 // runnerState captures the Machine fields needed to create lightweight runner
 // Machines for re-entrant execution (bridge callbacks, MakeFunc adapters).
 type runnerState struct {
+	interrupt       *atomic.Bool
 	globals         []Value
 	code            []Instruction // shared pooledCode (prefix + sentinels + trampolines)
 	baseCodeLen     int
@@ -3067,6 +3082,7 @@ func (m *Machine) captureRunnerState() *runnerState {
 	m.ensureSharedTables()
 	m.ensurePooledCode()
 	return &runnerState{
+		interrupt:       m.interrupt,
 		globals:         m.globals,
 		code:            m.pooledCode,
 		baseCodeLen:     m.pooledCodeBase,
@@ -3109,6 +3125,7 @@ func (rs *runnerState) acquireRunner() *Machine {
 	m.debugInfoFn = rs.debugInfoFn
 	m.fault = rs.fault
 	m.faultContinue = rs.faultContinue
+	m.interrupt = rs.interrupt
 	m.PanicNilCompat = rs.panicNilCompat
 	m.sentinels = rs.sentinels
 	return m
@@ -3561,6 +3578,7 @@ func (m *Machine) newGoroutine(fval Value, args []Value, spread bool) (panicked 
 		funcFields:      m.funcFields,
 		funcWrappers:    m.funcWrappers,
 		typesByRtype:    m.typesByRtype,
+		interrupt:       m.interrupt,
 		fault:           m.fault,
 		debugInfoFn:     m.debugInfoFn,
 		PanicNilCompat:  m.PanicNilCompat,

@@ -220,6 +220,7 @@ func (i *Interp) evalCompiled(name string, compile func() error) (res reflect.Va
 		fmt.Fprint(os.Stderr, FormatStats(i))
 		fmt.Fprintf(os.Stderr, "[comp] execution starts %s  +%v\n", name, goparser.Elapsed().Round(time.Microsecond))
 	}
+	i.ClearInterrupt() // one made when no code was running
 	tRun := time.Now()
 	err = i.Run()
 	i.Stats.RunTime += time.Since(tRun)
