@@ -454,6 +454,11 @@ walk:
 func (p *Parser) stmtEnd(toks Tokens) (int, error) {
 	end := toks.Index(lang.Semicolon)
 	if end == -1 {
+		// An operator at the end of the code continues the statement to
+		// the next line, which is missing.
+		if last := toks[len(toks)-1]; last.Tok.IsBinaryOp() || last.Tok == lang.Comma {
+			return -1, p.errAt(last, "missing operand after %s", last.Str)
+		}
 		return -1, p.wrapAt(toks[0], scan.ErrBlock, "no statement terminator after %s", toks[0].Describe())
 	}
 	firstTok := toks[0].Tok

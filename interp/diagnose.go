@@ -52,7 +52,11 @@ func (i *Interp) Diagnose(err error) (Diagnostic, bool) {
 	if d.Source == "" {
 		return d, false
 	}
-	if loc := i.Sources.FormatPos(pos) + ": "; !d.Panic {
+	// The message, or the value of a panic, can start with the position.
+	loc := i.Sources.FormatPos(pos) + ": "
+	if d.Panic {
+		d.Msg = "panic: " + strings.TrimPrefix(strings.TrimPrefix(d.Msg, "panic: "), loc)
+	} else {
 		d.Msg = strings.TrimPrefix(d.Msg, loc)
 	}
 	return d, true

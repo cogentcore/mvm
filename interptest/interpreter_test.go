@@ -117,7 +117,7 @@ func TestExpr(t *testing.T) {
 	run(t, []etest{
 		{n: "#00", src: "", res: "<invalid reflect.Value>"},
 		{n: "#01", src: "1+2", res: "3"},
-		{n: "#02", src: "1+", err: "block not terminated"},
+		{n: "#02", src: "1+", err: "missing operand after +"},
 		{n: "#03", src: "a := 1 + 2; b := 0; a + 1", res: "4"},
 		{n: "#04", src: "1+(2+3)", res: "6"},
 		{n: "#05", src: "(1+2)+3", res: "6"},

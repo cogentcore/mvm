@@ -2055,7 +2055,7 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 					return c.errUndef(t, s.Name)
 				}
 				if typ.Kind() != reflect.Func {
-					return c.errAt(t, "internal: call of non-func %s (type %v)", s.Name, typ)
+					return c.errAt(t, "invalid operation: cannot call non-function %s (type %v)", s.Name, typ)
 				}
 				// Wrap concrete args in Iface when the parameter expects an interface type.
 				// Use mvm-level Params types (which carry IfaceMethods) when available.
