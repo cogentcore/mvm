@@ -1156,11 +1156,7 @@ func (c *Compiler) stringIndex(s string) int {
 }
 
 func (c *Compiler) errAt(t goparser.Token, format string, args ...any) error {
-	msg := fmt.Sprintf(format, args...)
-	if loc := c.Sources.FormatPos(t.Pos); loc != "" {
-		return fmt.Errorf("%s: %s", loc, msg)
-	}
-	return errors.New(msg)
+	return goparser.NewPosError(c.Sources, t.Pos, nil, fmt.Sprintf(format, args...))
 }
 
 func (c *Compiler) errUndef(t goparser.Token, name string) error {
