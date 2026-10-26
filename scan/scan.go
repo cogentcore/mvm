@@ -140,7 +140,7 @@ func (sc *Scanner) Scan(src string, semiEOF bool) (tokens []Token, err error) {
 	for len(s) > 0 {
 		t, err := sc.Next(s)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", loc(src, offset+t.Pos), err)
+			return nil, &Error{Src: src, Pos: offset + t.Pos, Err: err}
 		}
 		if t.Tok == lang.Illegal && t.Str == "" {
 			break
@@ -194,6 +194,17 @@ func (sc *Scanner) Scan(src string, semiEOF bool) (tokens []Token, err error) {
 
 	return tokens, nil
 }
+
+// Error is an error of scanning a source text, at a byte offset in it.
+type Error struct {
+	Src string // the source text
+	Pos int    // the byte offset of the error in Src
+	Err error
+}
+
+func (e *Error) Error() string { return loc(e.Src, e.Pos) + ": " + e.Err.Error() }
+
+func (e *Error) Unwrap() error { return e.Err }
 
 func loc(s string, p int) string {
 	line, col := lineCol(s, p)

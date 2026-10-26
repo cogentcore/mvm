@@ -68,6 +68,10 @@ type Compiler struct {
 
 	genStart int // code offset at the start of the current generate() pass
 
+	// labelKeys are the keys of the label symbols of the compiled code, which
+	// are dropped when the next unit compiles (see purgeLabels).
+	labelKeys []string
+
 	// Defer brackets the target package's var inits so eval runs imported init()
 	// funcs before them (Go init order); zero when no reordering is needed.
 	Defer VarDeferral
@@ -288,6 +292,7 @@ func (c *Compiler) aliasTargetTopLevel(pkgPath string) {
 // Code and data are added incrementally in c.Code and C.Data.
 func (c *Compiler) Compile(name, src string) (err error) {
 	c.ResetUnitLabels()
+	c.purgeLabels()
 	c.PurgeUnitLocals()
 	// On failure, roll back to the pre-compile state so a half-compiled unit
 	// can't corrupt the next compile on this reused Compiler.
@@ -319,12 +324,28 @@ func (c *Compiler) Compile(name, src string) (err error) {
 	return c.finishCompile(remaining, targetTag)
 }
 
+// purgeLabels drops the label symbols of the code compiled so far. Labels
+// are jump targets within a unit, whose names, such as for0#e, start again
+// in each unit (see ResetUnitLabels), so a label of an earlier unit must not
+// be taken for the label of the same name of this one: a jump to it would
+// go into the code of the earlier unit.
+func (c *Compiler) purgeLabels() {
+	for _, k := range c.labelKeys {
+		if s, ok := c.Symbols[k]; ok && s.Kind == symbol.Label {
+			delete(c.Symbols, k)
+			c.Seg.Del(k)
+		}
+	}
+	c.labelKeys = c.labelKeys[:0]
+}
+
 // CompileFiles compiles several in-memory source files as a single main-package
 // unit (Phase 1 across all files, then Phase 2 code-gen), so top-level symbols
 // declared in one file are visible to the others regardless of file or
 // declaration order.
 func (c *Compiler) CompileFiles(sources []goparser.PackageSource) (err error) {
 	c.ResetUnitLabels()
+	c.purgeLabels()
 	c.PurgeUnitLocals()
 	snap := c.SnapshotUnit()
 	cg := c.snapshotCodegen()
@@ -1135,11 +1156,7 @@ func (c *Compiler) stringIndex(s string) int {
 }
 
 func (c *Compiler) errAt(t goparser.Token, format string, args ...any) error {
-	msg := fmt.Sprintf(format, args...)
-	if loc := c.Sources.FormatPos(t.Pos); loc != "" {
-		return fmt.Errorf("%s: %s", loc, msg)
-	}
-	return errors.New(msg)
+	return goparser.NewPosError(c.Sources, t.Pos, nil, fmt.Sprintf(format, args...))
 }
 
 func (c *Compiler) errUndef(t goparser.Token, name string) error {
@@ -2029,13 +2046,16 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				c.emit(t, vm.Call, methodNarg, nret)
 				break
 			}
+			if err := c.checkCallArgs(t, s, narg, spread); err != nil {
+				return err
+			}
 			if s.Kind != symbol.Value {
 				typ := s.Type
 				if typ == nil {
 					return c.errUndef(t, s.Name)
 				}
 				if typ.Kind() != reflect.Func {
-					return c.errAt(t, "internal: call of non-func %s (type %v)", s.Name, typ)
+					return c.errAt(t, "invalid operation: cannot call non-function %s (type %v)", s.Name, typ)
 				}
 				// Wrap concrete args in Iface when the parameter expects an interface type.
 				// Use mvm-level Params types (which carry IfaceMethods) when available.
@@ -2966,7 +2986,9 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 						addressedSlots = addressedSlots[:top]
 					}
 				}
-				c.SymSet(c.qualifyLabel(t.Str), &symbol.Symbol{Kind: symbol.Label, Value: vm.ValueOf(lc)})
+				key := c.qualifyLabel(t.Str)
+				c.SymSet(key, &symbol.Symbol{Kind: symbol.Label, Value: vm.ValueOf(lc)})
+				c.labelKeys = append(c.labelKeys, key)
 			}
 
 		case lang.Len:
@@ -5308,4 +5330,30 @@ func (c *Compiler) compileIntrinsic(
 	}
 	c.emit(t, info.op)
 	return true, nil
+}
+
+// checkCallArgs reports an error, as Go does when it compiles the call, if
+// the number of arguments narg of a call of s does not match the parameters
+// of its func type. spread is whether the call passes its last argument to
+// the variadic parameter with "...".
+func (c *Compiler) checkCallArgs(t goparser.Token, s *symbol.Symbol, narg int, spread bool) error {
+	typ := s.Type
+	if typ == nil || typ.Kind() != reflect.Func {
+		return nil
+	}
+	// The name is shown without the scope of a local name (main/f).
+	name := s.Name
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		name = name[i+1:]
+	}
+	nIn := typ.NumIn()
+	switch {
+	case spread && !typ.IsVariadic():
+		return c.errAt(t, "have (...) in call to non-variadic %s", name)
+	case narg < nIn && (!typ.IsVariadic() || spread || narg != nIn-1):
+		return c.errAt(t, "not enough arguments in call to %s", name)
+	case narg > nIn && (!typ.IsVariadic() || spread):
+		return c.errAt(t, "too many arguments in call to %s", name)
+	}
+	return nil
 }

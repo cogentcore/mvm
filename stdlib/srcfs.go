@@ -1,3 +1,5 @@
+//go:build !mvmnosrc
+
 package stdlib
 
 import _ "embed"

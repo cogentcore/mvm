@@ -7,15 +7,20 @@ import (
 	"github.com/mvm-sh/mvm/mtype"
 )
 
-var nativeLayoutTypes sync.Map // qualified type name -> native reflect.Type
+var nativeLayoutTypes sync.Map // qualified type name -> rtypeEntry
 
-var nativeIdentityTypes sync.Map // qualified type name -> native reflect.Type
+var nativeIdentityTypes sync.Map // qualified type name -> rtypeEntry
+
+// rtypeEntry holds a reflect.Type in a sync.Map. A type assertion to the
+// interface reflect.Type fails under goscript, whose reflect types do not
+// implement it at run time; one to this struct does not.
+type rtypeEntry struct{ t reflect.Type }
 
 // RegisterNativeIdentity makes an interpreted method-bearing type reuse the host
 // rtype, so values also arriving from a native pkg that links it (fs.PathError from
 // os.Open) keep one identity across the boundary.
 func RegisterNativeIdentity(name string, rt reflect.Type) {
-	nativeIdentityTypes.Store(name, rt)
+	nativeIdentityTypes.Store(name, rtypeEntry{rt})
 }
 
 // nativeIdentityFor returns the registered host rtype for t, or nil.
@@ -30,7 +35,7 @@ func nativeIdentityFor(t *mtype.Type) reflect.Type {
 	if !ok {
 		return nil
 	}
-	rt := v.(reflect.Type)
+	rt := v.(rtypeEntry).t
 	if rt.Kind() != t.Kind() || rt.PkgPath() != RtypePkgPath(t) {
 		return nil
 	}
@@ -64,7 +69,7 @@ func HasNativeIdentity(t *mtype.Type) bool {
 // into a native field (e.g. log.Logger -> http.Server.ErrorLog), where the erased
 // eface would crash a native reflect walk. Methods stay interpreted.
 func RegisterNativeLayout(name string, rt reflect.Type) {
-	nativeLayoutTypes.Store(name, rt)
+	nativeLayoutTypes.Store(name, rtypeEntry{rt})
 }
 
 // nativeLayoutRegistered reports whether t was registered. The native field count
@@ -74,6 +79,6 @@ func nativeLayoutRegistered(t *mtype.Type) bool {
 	if !ok {
 		return false
 	}
-	rt := v.(reflect.Type)
+	rt := v.(rtypeEntry).t
 	return rt.Kind() == reflect.Struct && rt.NumField() == len(t.Fields)
 }

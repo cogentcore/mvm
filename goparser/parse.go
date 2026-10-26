@@ -58,6 +58,7 @@ type Parser struct {
 	blankSeq       int                       // counter for unique blank identifier names
 	namedOut       []string                  // scoped names of named return vars for current function
 	symTracker     []string                  // accumulates newly-added symbol keys during a checkpoint window; nil = not tracking
+	priorSyms      map[string]*symbol.Symbol // the symbols before the current top-level compile (SnapshotUnit)
 	genCounter     int                       // monotonic source of resolveDecls generations
 	curGen         int                       // generation of the current resolveDecls (nestable; saved/restored)
 	typeGen        map[*mtype.Type]int       // generation each declared placeholder *Type was minted in
@@ -73,6 +74,7 @@ type Parser struct {
 	inForInit      bool                      // true while parsing for-init or range clause (marks LoopVar)
 	rangeAssign    Tokens                    // assign-form range per-iteration assigns, stashed for parseFor
 	blockDepth     int                       // nesting depth of function bodies and loops (>0 discards unused expr-statement values)
+	noUnitValue    bool                      // the last statement of the last parsed REPL source has no value (see UnitValue)
 	instDepth      int                       // nesting depth of generic instantiations
 	buildCtx       *buildContext             // build constraint context for file filtering
 	embeds         map[string][]byte         // //go:embed file bytes by canonical var key
@@ -111,6 +113,13 @@ func (p *Parser) SymAdd(i int, name string, v vm.Value, k symbol.Kind, t *mtype.
 	if k == symbol.LocalVar {
 		p.recordDirectLocal(name)
 	}
+}
+
+// priorSym reports whether s is a symbol of an earlier top-level compile,
+// such as a package var that a REPL redeclaration declares again, maybe with
+// another type, and so gets a symbol of its own.
+func (p *Parser) priorSym(s *symbol.Symbol) bool {
+	return s != nil && p.priorSyms[s.Name] == s
 }
 
 func (p *Parser) symGet(name string) (*symbol.Symbol, string, bool) {
@@ -306,28 +315,73 @@ func (p *Parser) rebuildSeg() {
 	}
 }
 
-func (p *Parser) errAt(tok Token, format string, args ...any) error {
-	msg := fmt.Sprintf(format, args...)
-	if loc := p.Sources.FormatPos(tok.Pos); loc != "" {
-		return fmt.Errorf("%s: %s", loc, msg)
+// PosError is an error at a position of the source code, which it keeps,
+// so that tools can show where it is (see interp.Interp.Diagnose).
+type PosError struct {
+	// Pos is the position, in the position space of the Sources.
+	Pos int
+
+	// Loc is the position as name:line:col, or "" if not known.
+	Loc string
+
+	// Msg is the message, without the position.
+	Msg string
+
+	// Err is an error that it wraps, if any, whose message starts Msg.
+	Err error
+}
+
+// NewPosError returns a new [PosError] at the given position of the given
+// sources, with the given message, which wraps the given error if non-nil.
+func NewPosError(srcs scan.Sources, pos int, err error, msg string) *PosError {
+	switch {
+	case err != nil && msg == "":
+		msg = err.Error()
+	case err != nil:
+		msg = err.Error() + ": " + msg
 	}
-	return errors.New(msg)
+	return &PosError{Pos: pos, Loc: srcs.FormatPos(pos), Msg: msg, Err: err}
+}
+
+func (e *PosError) Error() string {
+	if e.Loc == "" {
+		return e.Msg
+	}
+	return e.Loc + ": " + e.Msg
+}
+
+func (e *PosError) Unwrap() error { return e.Err }
+
+// SourcePos returns the position of the error, in the position space of
+// the Sources.
+func (e *PosError) SourcePos() int { return e.Pos }
+
+func (p *Parser) errAt(tok Token, format string, args ...any) error {
+	return NewPosError(p.Sources, tok.Pos, nil, fmt.Sprintf(format, args...))
 }
 
 // wrapAt wraps base (preserving it for errors.Is) with the source position of tok and a message.
 func (p *Parser) wrapAt(tok Token, base error, format string, args ...any) error {
-	msg := fmt.Sprintf(format, args...)
-	if loc := p.Sources.FormatPos(tok.Pos); loc != "" {
-		return fmt.Errorf("%s: %w: %s", loc, base, msg)
-	}
-	return fmt.Errorf("%w: %s", base, msg)
+	return NewPosError(p.Sources, tok.Pos, base, fmt.Sprintf(format, args...))
 }
 
 func (p *Parser) scan(s string, endSemi bool) (out Tokens, err error) {
-	return p.scanAt(0, s, endSemi)
+	return p.scanTokens(0, s, endSemi)
 }
 
+// scanAt scans s, which is at the given position of the Sources: the
+// errors of scanning are a [PosError] at their position in the Sources.
 func (p *Parser) scanAt(basePos int, s string, endSemi bool) (out Tokens, err error) {
+	out, err = p.scanTokens(basePos, s, endSemi)
+	var se *scan.Error
+	if errors.As(err, &se) {
+		err = NewPosError(p.Sources, basePos+se.Pos, se.Err, "")
+	}
+	return out, err
+}
+
+// scanTokens scans s, with the positions of its tokens offset by basePos.
+func (p *Parser) scanTokens(basePos int, s string, endSemi bool) (out Tokens, err error) {
 	toks, err := p.Scan(s, endSemi)
 	if err != nil {
 		return out, err
@@ -400,6 +454,11 @@ walk:
 func (p *Parser) stmtEnd(toks Tokens) (int, error) {
 	end := toks.Index(lang.Semicolon)
 	if end == -1 {
+		// An operator at the end of the code continues the statement to
+		// the next line, which is missing.
+		if last := toks[len(toks)-1]; last.Tok.IsBinaryOp() || last.Tok == lang.Comma {
+			return -1, p.errAt(last, "missing operand after %s", last.Str)
+		}
 		return -1, p.wrapAt(toks[0], scan.ErrBlock, "no statement terminator after %s", toks[0].Describe())
 	}
 	firstTok := toks[0].Tok
@@ -457,6 +516,32 @@ func (p *Parser) scanDecls(src string) ([]Tokens, error) {
 	return decls, nil
 }
 
+// UnitValue returns whether the last statement of the last parsed REPL
+// source can have a value, which is then the value that its Eval returns.
+// A block-like statement, such as an if, switch or for, has none, nor do
+// the other statements that are not expressions or assignments, such as
+// go and return: values that they leave on the stack are not theirs, such
+// as the last index of a loop, and the last global is returned when the
+// stack is empty.
+func (p *Parser) UnitValue() bool { return !p.noUnitValue }
+
+// isNoValueStmt returns whether the given top-level statement is one that
+// has no value (see [Parser.UnitValue]), possibly labeled.
+func isNoValueStmt(toks Tokens) bool {
+	if len(toks) > 2 && toks[0].Tok == lang.Ident && toks[1].Tok == lang.Colon {
+		toks = toks[2:] // a labeled statement
+	}
+	if len(toks) == 0 {
+		return false
+	}
+	switch toks[0].Tok {
+	case lang.If, lang.Switch, lang.Select, lang.For, lang.BraceBlock,
+		lang.Go, lang.Defer, lang.Goto, lang.Break, lang.Continue, lang.Return:
+		return true
+	}
+	return false
+}
+
 // ParseOneStmt parses a single pre-scanned statement token slice.
 func (p *Parser) ParseOneStmt(toks Tokens) (Tokens, error) {
 	return p.parseStmt(toks)
@@ -508,6 +593,7 @@ func (p *Parser) SnapshotUnit() UnitState {
 	maps.Copy(unitg, p.unitGenerics)
 	pkgs := make(map[string]*symbol.Package, len(p.Packages))
 	maps.Copy(pkgs, p.Packages)
+	p.priorSyms = syms
 	return UnitState{
 		syms: syms, unitg: unitg, pkgs: pkgs, insts: insts,
 		iargs: maps.Clone(p.instArgs), iowner: maps.Clone(p.instOwner),

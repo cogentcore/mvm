@@ -616,7 +616,7 @@ func (p *Parser) addSymVar(index, nparams int, name string, typ *mtype.Type, fla
 		}
 	case parseTypeVar:
 		if p.funcScope == "" {
-			if s, ok := p.globalSym(name); ok && s.Index != symbol.UnsetAddr {
+			if s, ok := p.globalSym(name); ok && s.Index != symbol.UnsetAddr && !p.priorSym(s) {
 				// Preserve pre-assigned index from allocGlobalSlots.
 				s.Type = typ
 				s.Value = zv

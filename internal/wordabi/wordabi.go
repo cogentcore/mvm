@@ -51,6 +51,9 @@ func nativeIsLittleEndian() bool {
 // stack ABI packs sub-word fields into 8-byte slots (abi0ClassifyWordSig). The
 // WordABI0 const picks one; the other branch is eliminated at compile time.
 func ClassifyWordSig(sig reflect.Type) (key, reason string, ok bool) {
+	if goscriptTarget {
+		return "", "", false
+	}
 	if WordABI0 {
 		return abi0ClassifyWordSig(sig)
 	}

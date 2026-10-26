@@ -118,7 +118,7 @@ func (p *Parser) addOrRebindGlobalVar(name string) string {
 		return p.addPkgVar(p.blankName())
 	}
 	scoped := p.pkgKey(name)
-	if s, ok := p.Symbols[scoped]; ok && s.Kind == symbol.Var {
+	if s, ok := p.Symbols[scoped]; ok && s.Kind == symbol.Var && !p.priorSym(s) {
 		return scoped
 	}
 	return p.addPkgVar(name)

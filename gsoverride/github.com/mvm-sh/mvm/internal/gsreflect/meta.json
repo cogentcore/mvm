@@ -1,0 +1,6 @@
+{
+  "dependencies": ["reflect"],
+  "asyncCallbacks": {
+    "SetMethod": ["fn"]
+  }
+}

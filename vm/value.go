@@ -3,7 +3,6 @@ package vm
 import (
 	"fmt"
 	"iter"
-	"math"
 	"reflect"
 	"unsafe"
 
@@ -76,7 +75,7 @@ var boundHookCallRtype = reflect.TypeFor[boundHookCall]()
 // ref carries reflect.Zero(t) for type metadata on numeric types.
 // Composite types (string, slice, map, struct, ptr, func, interface) use ref.
 type Value struct {
-	num uint64        // inline storage for numeric types (bool, int*, uint*, float*)
+	num word          // inline storage for numeric types (bool, int*, uint*, float*)
 	ref reflect.Value // composite data OR reflect.Zero(t) for numeric type metadata
 }
 
@@ -124,6 +123,40 @@ var (
 	zfloat64 = reflect.Zero(reflect.TypeFor[float64]())
 )
 
+// zeroOfKind returns the zero reflect.Value of the numeric kind k, as the
+// type metadata of a Value of that kind.
+func zeroOfKind(k reflect.Kind) reflect.Value {
+	switch k {
+	case reflect.Bool:
+		return zbool
+	case reflect.Int:
+		return zint
+	case reflect.Int8:
+		return zint8
+	case reflect.Int16:
+		return zint16
+	case reflect.Int32:
+		return zint32
+	case reflect.Int64:
+		return zint64
+	case reflect.Uint:
+		return zuint
+	case reflect.Uint8:
+		return zuint8
+	case reflect.Uint16:
+		return zuint16
+	case reflect.Uint32:
+		return zuint32
+	case reflect.Uint64:
+		return zuint64
+	case reflect.Uintptr:
+		return zuintptr
+	case reflect.Float32:
+		return zfloat32
+	}
+	return zfloat64
+}
+
 func isNum(k reflect.Kind) bool { return k >= reflect.Bool && k <= reflect.Float64 }
 
 func uintOrUintptr(ref reflect.Value) reflect.Value {
@@ -135,7 +168,7 @@ func uintOrUintptr(ref reflect.Value) reflect.Value {
 
 func isFloat(k reflect.Kind) bool { return k == reflect.Float32 || k == reflect.Float64 }
 
-func numBits(rv reflect.Value) uint64 {
+func numBits(rv reflect.Value) word {
 	switch rv.Kind() {
 	case reflect.Bool:
 		if rv.Bool() {
@@ -143,11 +176,11 @@ func numBits(rv reflect.Value) uint64 {
 		}
 		return 0
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return uint64(rv.Int())
+		return word(rv.Int())
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return rv.Uint()
+		return uintWord(rv.Uint())
 	case reflect.Float32, reflect.Float64:
-		return math.Float64bits(rv.Float())
+		return floatWord(rv.Float())
 	}
 	return 0
 }
@@ -215,8 +248,10 @@ func (v Value) Type() reflect.Type { return v.ref.Type() }
 
 // UnwrapType checks if v encodes a stdlib type as (*T)(nil).
 // If so, it returns the underlying reflect.Type and true.
+// A package variable of a pointer type that is nil is not a type: it is
+// addressable, as the element of the pointer to it that binds it.
 func (v Value) UnwrapType() (reflect.Type, bool) {
-	if v.Kind() == reflect.Pointer && v.Reflect().IsNil() {
+	if v.Kind() == reflect.Pointer && v.Reflect().IsNil() && !v.Reflect().CanAddr() {
 		return v.Type().Elem(), true
 	}
 	return nil, false
@@ -229,10 +264,10 @@ func (v Value) IsValid() bool { return v.ref.IsValid() }
 func (v Value) Int() int64 { return int64(v.num) }
 
 // Uint returns v's value as uint64.
-func (v Value) Uint() uint64 { return v.num }
+func (v Value) Uint() uint64 { return wordUint(v.num) }
 
 // Float returns v's value as float64.
-func (v Value) Float() float64 { return math.Float64frombits(v.num) }
+func (v Value) Float() float64 { return wordFloat(v.num) }
 
 // Bool returns v's value as bool.
 func (v Value) Bool() bool { return v.num != 0 }
@@ -269,9 +304,9 @@ func (v Value) Reflect() reflect.Value {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		r.SetInt(int64(v.num))
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		r.SetUint(v.num)
+		r.SetUint(wordUint(v.num))
 	case reflect.Float32, reflect.Float64:
-		r.SetFloat(math.Float64frombits(v.num))
+		r.SetFloat(wordFloat(v.num))
 	}
 	return r
 }

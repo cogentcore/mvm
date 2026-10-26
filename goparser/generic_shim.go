@@ -2,28 +2,11 @@ package goparser
 
 import (
 	"fmt"
-	"maps"
-	"sync"
 
+	"github.com/mvm-sh/mvm/genshim"
 	"github.com/mvm-sh/mvm/mtype"
 	"github.com/mvm-sh/mvm/symbol"
 	"github.com/mvm-sh/mvm/vm"
-)
-
-// genericShim is one registered interpreted-source generic shim attached to
-// an otherwise-native package. Used when a Go stdlib generic cannot be
-// expressed via a single reflect.ValueOf binding (e.g. reflect.TypeFor): the
-// shim provides an interpreted definition equivalent to the upstream one,
-// parsed against the native package's context so `pkg.Sym[T](...)` resolves
-// through the normal generic-instantiation pipeline.
-type genericShim struct {
-	source     string   // entire shim source ("package <pkg>" + decl(s)).
-	nativeRefs []string // names from p.Packages[pkg].Values referenced bare by the source.
-}
-
-var (
-	shimMu       sync.Mutex
-	shimRegistry = map[string][]genericShim{}
 )
 
 // RegisterGenericShim queues an interpreted-source shim to install into pkg's
@@ -34,12 +17,18 @@ var (
 // CompilingPkg fallback resolves them at signature parse and body
 // instantiation time.
 //
-// Safe to call from package init; the registry persists for the process
-// lifetime and is consulted by every parser created thereafter.
+// A shim is used when a generic cannot be expressed via a single
+// reflect.ValueOf binding (e.g. reflect.TypeFor): it provides an interpreted
+// definition equivalent to the upstream one, parsed against the native
+// package's context so `pkg.Sym[T](...)` resolves through the normal
+// generic-instantiation pipeline.
+//
+// Safe to call from package init; the registry (package genshim, which
+// packages of bindings can use directly without importing the parser)
+// persists for the process lifetime and is consulted by every parser
+// created thereafter.
 func RegisterGenericShim(pkg, source string, nativeRefs []string) {
-	shimMu.Lock()
-	defer shimMu.Unlock()
-	shimRegistry[pkg] = append(shimRegistry[pkg], genericShim{source: source, nativeRefs: nativeRefs})
+	genshim.Register(pkg, source, nativeRefs)
 }
 
 // installGenericShims parses every registered shim against its target native
@@ -47,12 +36,7 @@ func RegisterGenericShim(pkg, source string, nativeRefs []string) {
 // canonical qualified keys (e.g. "reflect.TypeFor"). Skipped for packages
 // without registered shims or absent from p.Packages.
 func (p *Parser) installGenericShims() error {
-	shimMu.Lock()
-	snapshot := make(map[string][]genericShim, len(shimRegistry))
-	maps.Copy(snapshot, shimRegistry)
-	shimMu.Unlock()
-
-	for pkgPath, shims := range snapshot {
+	for pkgPath, shims := range genshim.All() {
 		pkg, ok := p.Packages[pkgPath]
 		if !ok {
 			continue
@@ -66,14 +50,14 @@ func (p *Parser) installGenericShims() error {
 	return nil
 }
 
-func (p *Parser) installOneShim(pkgPath string, nativePkg *symbol.Package, sh genericShim) error {
+func (p *Parser) installOneShim(pkgPath string, nativePkg *symbol.Package, sh genshim.Shim) error {
 	// Pre-seed each declared native reference under its qualified key
 	// ("<pkgPath>.<name>") so the shim's signature parse (at registration
 	// time) and its instantiated body parse (at call time) resolve bare
 	// idents through symGet's importingPkg / CompilingPkg fallback rather
 	// than through the comp-time Period handler that we never visit for
 	// shim-internal references.
-	for _, name := range sh.nativeRefs {
+	for _, name := range sh.NativeRefs {
 		key := QualifyName(pkgPath, name)
 		if _, exists := p.Symbols[key]; exists {
 			continue
@@ -119,6 +103,6 @@ func (p *Parser) installOneShim(pkgPath string, nativePkg *symbol.Package, sh ge
 		p.PosBase = savedPosBase
 	}()
 
-	_, err := p.ParseAll(pkgPath+"/<shim>", sh.source)
+	_, err := p.ParseAll(pkgPath+"/<shim>", sh.Source)
 	return err
 }

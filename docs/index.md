@@ -24,7 +24,8 @@ packages.
 - [stdmod](modules/stdmod.md) -- redirect FS that routes stdlib imports through the
   synthetic `github.com/mvm-sh/std` module
 - [modfs](modules/modfs.md) -- in-memory `fs.FS` over the Go module proxy for dynamic network imports
-- [cmd/extract](modules/extract.md) -- generator for stdlib binding files
+- [cmd/extract](modules/extract.md) -- generator for stdlib binding files, and for lazily loaded bindings of other packages with generic shims
+- [genshim](modules/genshim.md) -- dependency-free registry of the generic shims of packages of native bindings
 - [cmd/mvmlint](modules/mvmlint.md) -- project-specific source linter built on mvm's own scanner
 
 ## Architecture
@@ -57,3 +58,4 @@ Architecture Decision Records:
 - [ADR-021: Synthesized rtypes for native method dispatch](decisions/ADR-021-synthesized-rtypes.md) (supersedes ADR-009, part of ADR-012)
 - [ADR-022: Word-class ABI register shapes for method dispatch](decisions/ADR-022-word-class-dispatch.md) (extends ADR-021)
 - [ADR-023: Index-based method dispatch](decisions/ADR-023-index-based-method-dispatch.md) (accepted; phase 1 native tables + 2' fused method frame landed, embedding/direct phases already realized, 4 deferred)
+- [ADR-024: Deep unbox of native call arguments](decisions/ADR-024-deep-unbox-native-args.md)

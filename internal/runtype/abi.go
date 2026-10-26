@@ -1,3 +1,5 @@
+//go:build !goscript
+
 package runtype
 
 import "unsafe"
@@ -96,20 +98,6 @@ type abiChanType struct {
 	abiType
 	Elem *abiType
 	Dir  uintptr // ChanDir: 1=recv, 2=send, 3=both
-}
-
-// abiMapType mirrors internal/abi.MapType.
-type abiMapType struct {
-	abiType
-	Key       *abiType
-	Elem      *abiType
-	Group     *abiType
-	Hasher    func(unsafe.Pointer, uintptr) uintptr
-	GroupSize uintptr
-	SlotSize  uintptr
-	ElemOff   uintptr
-	Flags     uint32
-	_         uint32 // align following UncommonType on 32 and 64-bit targets
 }
 
 // abiFuncType mirrors internal/abi.FuncType. The In/Out *abiType arrays are

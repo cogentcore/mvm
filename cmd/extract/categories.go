@@ -63,31 +63,32 @@ var Core = map[string]bool{
 var BuildTags = map[string]string{
 	"runtime/cgo": "cgo",
 	// Interpreted from the mirror on wasm, not bridged; each must be in ~/src/std.
-	"errors":          "!wasm",
-	"fmt":             "!wasm",
-	"strings":         "!wasm",
-	"bytes":           "!wasm",
-	"bufio":           "!wasm",
-	"sort":            "!wasm",
-	"io":              "!wasm",
-	"io/fs":           "!wasm",
-	"io/ioutil":       "!wasm",
-	"log/slog":        "!wasm",
-	"context":         "!wasm",
-	"encoding":        "!wasm",
-	"encoding/json":   "!wasm",
-	"encoding/binary": "!wasm",
-	"encoding/hex":    "!wasm",
+	// goscript bridges them: its native code calls interpreted methods.
+	"errors":          "!wasm || goscript",
+	"fmt":             "!wasm || goscript",
+	"strings":         "!wasm || goscript",
+	"bytes":           "!wasm || goscript",
+	"bufio":           "!wasm || goscript",
+	"sort":            "!wasm || goscript",
+	"io":              "!wasm || goscript",
+	"io/fs":           "!wasm || goscript",
+	"io/ioutil":       "!wasm || goscript",
+	"log/slog":        "!wasm || goscript",
+	"context":         "!wasm || goscript",
+	"encoding":        "!wasm || goscript",
+	"encoding/json":   "!wasm || goscript",
+	"encoding/binary": "!wasm || goscript",
+	"encoding/hex":    "!wasm || goscript",
 	"encoding/base64": "!wasm",
-	"container/heap":  "!wasm",
-	"container/list":  "!wasm",
-	"container/ring":  "!wasm",
-	"flag":            "!wasm",
-	"regexp":          "!wasm",
-	"regexp/syntax":   "!wasm",
-	"text/scanner":    "!wasm",
-	"text/tabwriter":  "!wasm",
-	"html":            "!wasm",
+	"container/heap":  "!wasm || goscript",
+	"container/list":  "!wasm || goscript",
+	"container/ring":  "!wasm || goscript",
+	"flag":            "!wasm || goscript",
+	"regexp":          "!wasm || goscript",
+	"regexp/syntax":   "!wasm || goscript",
+	"text/scanner":    "!wasm || goscript",
+	"text/tabwriter":  "!wasm || goscript",
+	"html":            "!wasm || goscript",
 }
 
 // WasmDropPrefixes and WasmDropExact tag bridges !wasm to shrink the binary; the
@@ -161,6 +162,16 @@ func wasmDropTag(importPath, tag string) string {
 		return "!wasm"
 	}
 	return tag + " && !wasm"
+}
+
+// goscriptDropTag adds !goscript to the build tag of the js/wasm syscall
+// bindings: they name constants (SO_ERROR, SYS_FCNTL, ...) that the syscall
+// package of goscript, which also builds for js/wasm, does not define.
+func goscriptDropTag(importPath, goos, tag string) string {
+	if importPath != "syscall" || goos != "js" {
+		return tag
+	}
+	return tag + " && !goscript"
 }
 
 // SymbolBuildTags lists individual exported symbols that were added in a newer
