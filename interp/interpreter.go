@@ -229,7 +229,7 @@ func (i *Interp) evalCompiled(name string, compile func() error) (res reflect.Va
 	if errors.Is(err, vm.ErrGoroutineFault) || (err == nil && i.PendingGoroutineFault() != nil) {
 		err = &ExitError{Code: 2}
 	}
-	if !i.UnitValue() { // a for loop, which leaves values of its own on the stack
+	if !i.UnitValue() { // a statement that has no value, such as if or for
 		return res, err
 	}
 	return i.Top().Reflect(), err
