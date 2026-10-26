@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mvm-sh/mvm/interp"
-	"github.com/mvm-sh/mvm/lang/golang"
+	"github.com/cogentcore/mvm/interp"
+	"github.com/cogentcore/mvm/lang/golang"
 )
 
 // TestReplLoopLabels checks loops in successive Evals, whose labels have

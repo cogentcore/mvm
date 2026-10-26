@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mvm-sh/mvm/interp"
-	"github.com/mvm-sh/mvm/lang/golang"
+	"github.com/cogentcore/mvm/interp"
+	"github.com/cogentcore/mvm/lang/golang"
 )
 
 // TestReplResult checks the value that Eval returns, which a REPL prints:
