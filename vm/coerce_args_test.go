@@ -22,7 +22,7 @@ func TestCoerceInterfaceArgsReadOnly(t *testing.T) {
 	}
 
 	in := []reflect.Value{ro}
-	coerceInterfaceArgs(in, reflect.TypeOf(func(error) error { return nil }))
+	coerceInterfaceArgs(in, reflect.TypeOf(func(error) error { return nil }), false)
 
 	if !in[0].CanInterface() {
 		t.Fatal("read-only arg was not made exportable")

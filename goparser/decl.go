@@ -1494,8 +1494,9 @@ func (p *Parser) registerVarNames(decl Tokens) []string {
 			s, _, ok := p.symGet(lt[0].Str)
 			// A fresh top-level var must not reuse an imported pkg's same-named var
 			// leaked to the bare key (mvm test go/format: format_test's []struct
-			// tests vs interpreted go/format's []string tests).
-			if !ok || s.Index == symbol.UnsetAddr || p.foreignBareDecl(s, lt[0].Str) {
+			// tests vs interpreted go/format's []string tests), nor a var of an
+			// earlier compile (a REPL redeclaration), whose type may differ.
+			if !ok || s.Index == symbol.UnsetAddr || p.foreignBareDecl(s, lt[0].Str) || p.priorSym(s) {
 				p.SymAdd(symbol.UnsetAddr, name, nilValue, symbol.Var, nil)
 			}
 			continue

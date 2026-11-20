@@ -63,10 +63,17 @@ func (m *Machine) nativeMethodDesc(rt reflect.Type, methodID int, name string) n
 	return d
 }
 
+// implementsReflectType reports whether rt implements reflect.Type. Under
+// goscript reflect.Type is not an interface type to reflection, and its
+// types are JavaScript objects with no reflect.Type method set to check.
+func implementsReflectType(rt reflect.Type) bool {
+	return reflectTypeIface.Kind() == reflect.Interface && rt.Implements(reflectTypeIface)
+}
+
 // resolveSimpleNative returns the unbound func for a directly-dispatchable
 // native method, or ok=false to take the slow (shim/hook/promotion) path.
 func resolveSimpleNative(rt reflect.Type, name string) (fn reflect.Value, needAddr, ok bool) {
-	if rt == reflectValueRtype || isShimmedNativeType(rt) || rt.Implements(reflectTypeIface) ||
+	if rt == reflectValueRtype || isShimmedNativeType(rt) || implementsReflectType(rt) ||
 		isSynthOrSynthPtr(rt) || hasNativeMethodHook(rt, name) {
 		return reflect.Value{}, false, false
 	}

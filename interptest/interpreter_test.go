@@ -117,7 +117,7 @@ func TestExpr(t *testing.T) {
 	run(t, []etest{
 		{n: "#00", src: "", res: "<invalid reflect.Value>"},
 		{n: "#01", src: "1+2", res: "3"},
-		{n: "#02", src: "1+", err: "block not terminated"},
+		{n: "#02", src: "1+", err: "missing operand after +"},
 		{n: "#03", src: "a := 1 + 2; b := 0; a + 1", res: "4"},
 		{n: "#04", src: "1+(2+3)", res: "6"},
 		{n: "#05", src: "(1+2)+3", res: "6"},
@@ -1235,8 +1235,9 @@ func TestStruct(t *testing.T) {
 
 		// Go 1.21+: panic of a nil interface yields *runtime.PanicNilError; a
 		// typed nil stays itself. See [[project_panic_nil_error]].
-		{n: "panic_nil_literal", src: `func f() (s string) { defer func() { s = recover().(error).Error() }(); panic(nil); return }; f()`, res: "panic called with nil argument"},
-		{n: "panic_nil_iface", src: `func f() (s string) { defer func() { s = recover().(error).Error() }(); var e error; panic(e); return }; f()`, res: "panic called with nil argument"},
+		// Go 1.27 prefixes the PanicNilError message with "runtime error: ".
+		{n: "panic_nil_literal", src: `import "strings"; func f() (s string) { defer func() { s = strings.TrimPrefix(recover().(error).Error(), "runtime error: ") }(); panic(nil); return }; f()`, res: "panic called with nil argument"},
+		{n: "panic_nil_iface", src: `import "strings"; func f() (s string) { defer func() { s = strings.TrimPrefix(recover().(error).Error(), "runtime error: ") }(); var e error; panic(e); return }; f()`, res: "panic called with nil argument"},
 		{n: "panic_typed_nil_kept", src: `func f() (out bool) { defer func() { _, out = recover().(*int) }(); panic((*int)(nil)); return }; f()`, res: "true"},
 
 		// defer in a range body used to crash (sp-resident iterator displaced by
@@ -2716,9 +2717,9 @@ func TestTypeSwitch(t *testing.T) {
 		{n: "no_bind_str", src: `var i any = "hi"; var r int; switch i.(type) { case int: r = 1; case string: r = 2 }; r`, res: "2"},
 		{n: "no_bind_default", src: `var i any = true; var r int; switch i.(type) { case int: r = 1; default: r = 9 }; r`, res: "9"},
 
-		{n: "bind_int", src: `var i any = 42; switch v := i.(type) { case int: v + 1 }`, res: "43"},
-		{n: "bind_str", src: `var i any = "hi"; switch v := i.(type) { case string: v }`, res: "hi"},
-		{n: "bind_second", src: `var i any = "hi"; switch v := i.(type) { case int: v; case string: v }`, res: "hi"},
+		{n: "bind_int", src: `var i any = 42; var r int; switch v := i.(type) { case int: r = v + 1 }; r`, res: "43"},
+		{n: "bind_str", src: `var i any = "hi"; var r string; switch v := i.(type) { case string: r = v }; r`, res: "hi"},
+		{n: "bind_second", src: `var i any = "hi"; var r string; switch v := i.(type) { case int: r = "int"; case string: r = v }; r`, res: "hi"},
 		{n: "bind_default", src: `var i any = true; var r int; switch i.(type) { case int: r = 1; default: r = 9 }; r`, res: "9"},
 
 		{n: "multi_int", src: `var i any = 42; var r int; switch i.(type) { case int, string: r = 1; default: r = 2 }; r`, res: "1"},
@@ -2733,7 +2734,9 @@ type Getter interface { Get() int }
 type S struct { n int }
 func (s S) Get() int { return s.n }
 var g Getter = S{7}
-switch v := g.(type) { case S: v.Get() }`, res: "7"},
+var r int
+switch v := g.(type) { case S: r = v.Get() }
+r`, res: "7"},
 
 		{n: "iface_case_nobind", src: `
 type T struct{}
@@ -2840,13 +2843,17 @@ f(opt...)`, res: "42"},
 import "encoding/json"
 var m map[string]interface{}
 json.Unmarshal([]byte(` + "`" + `{"a":"hello"}` + "`" + `), &m)
-switch m["a"].(type) { case string: "ok"; default: "fail" }`, res: "ok"},
+var r string
+switch m["a"].(type) { case string: r = "ok"; default: r = "fail" }
+r`, res: "ok"},
 
 		{n: "native_map_typeswitch_nil", src: `
 import "encoding/json"
 var m map[string]interface{}
 json.Unmarshal([]byte(` + "`" + `{"a":null}` + "`" + `), &m)
-switch m["a"].(type) { case nil: "ok"; default: "fail" }`, res: "ok"},
+var r string
+switch m["a"].(type) { case nil: r = "ok"; default: r = "fail" }
+r`, res: "ok"},
 
 		{n: "generic_ptr_writeback", src: `
 func F[T int | string](x T) T {

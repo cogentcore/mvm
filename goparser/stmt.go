@@ -404,7 +404,7 @@ func (p *Parser) parseVarDecl(toks Tokens) (handled bool, err error) {
 				name := p.pkgKey(rawName)
 				// Gate on name itself: a sibling import's same-named bare alias
 				// would satisfy symGet yet leave name's slot nil (panic below).
-				if _, ok := p.Symbols[name]; !ok {
+				if s, ok := p.Symbols[name]; !ok || p.priorSym(s) {
 					p.SymAdd(symbol.UnsetAddr, name, nilValue, symbol.Var, nil)
 				}
 				if len(ct) > 1 {

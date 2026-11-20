@@ -1,3 +1,5 @@
+//go:build !goscript
+
 package runtype
 
 import "sync/atomic"

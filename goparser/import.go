@@ -509,6 +509,9 @@ func (p *Parser) ParseAll(name, src string) (out []DeferredDecl, err error) {
 		pkgTag = name
 	}
 	out, err = p.resolveDecls(decls, pkgTag)
+	if src != "" {
+		p.noUnitValue = len(decls) > 0 && isNoValueStmt(decls[len(decls)-1])
+	}
 	if DebugComp && err == nil && !isShim(name) {
 		p.traceCompPkg(name, p.ownLines(name))
 	}
@@ -529,6 +532,7 @@ func (p *Parser) ParseAllFiles(sources []PackageSource) (out []DeferredDecl, err
 		decls = append(decls, d...)
 	}
 	out, err = p.resolveDecls(decls, "")
+	p.noUnitValue = false
 	if DebugComp && err == nil {
 		own := 0
 		for i := start; i < start+len(sources); i++ {

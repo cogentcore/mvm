@@ -18,7 +18,6 @@ import (
 	"github.com/mvm-sh/mvm/lang"
 	"github.com/mvm-sh/mvm/mtype"
 	"github.com/mvm-sh/mvm/stdlib"
-	"github.com/mvm-sh/mvm/stdlib/stdmod"
 	"github.com/mvm-sh/mvm/symbol"
 	"github.com/mvm-sh/mvm/vm"
 )
@@ -67,6 +66,7 @@ type Interp struct {
 	stdlibPatched bool
 	hostStdio     bool                 // keep interpreted os.Std* bound to host *os.File
 	synthAttached map[*mtype.Type]bool // types already passed through AttachSynthMethods
+	dataPushed    int                  // len(Data) already pushed to the VM by earlier Evals
 	Stats         Stats
 }
 
@@ -95,8 +95,7 @@ type Stats struct {
 // NewInterpreter returns a new interpreter.
 func NewInterpreter(s *lang.Spec) *Interp {
 	i := &Interp{Compiler: comp.NewCompiler(s), Machine: vm.NewMachine()}
-	i.SetStdlibFS(stdmod.DefaultFS())
-	i.SetRemoteFS(stdmod.DefaultRemoteFS())
+	setDefaultFS(i)
 	return i
 }
 
@@ -121,11 +120,9 @@ func (i *Interp) EvalFiles(sources []goparser.PackageSource) (reflect.Value, err
 // returning the last produced value. Shared by Eval and EvalFiles.
 func (i *Interp) evalCompiled(name string, compile func() error) (res reflect.Value, err error) {
 	codeOffset := len(i.Code)
-	dataOffset := 0
-	if codeOffset > 0 {
-		// All data must be copied to the VM the first time only (re-entrance).
-		dataOffset = len(i.Data)
-	}
+	// Only the data added since the last Eval is copied to the VM
+	// (re-entrance). An Eval can add data but no code, as an import does.
+	dataOffset := i.dataPushed
 	// Drop the previous Eval's leftover init/main call shims so m.code
 	// stays index-aligned with the compiler's Code.
 	i.TrimCode(codeOffset)
@@ -162,6 +159,7 @@ func (i *Interp) evalCompiled(name string, compile func() error) (res reflect.Va
 
 	i.TrimStack()
 	i.Push(i.Data[dataOffset:]...)
+	i.dataPushed = len(i.Data)
 	// start is the VM-code position of the freshly compiled code.
 	// It can sit past codeOffset because prior Evals left their per-Evals
 	// init/main call shims in m.code, and PopExit reclaims only the trailing Exit.
@@ -222,6 +220,7 @@ func (i *Interp) evalCompiled(name string, compile func() error) (res reflect.Va
 		fmt.Fprint(os.Stderr, FormatStats(i))
 		fmt.Fprintf(os.Stderr, "[comp] execution starts %s  +%v\n", name, goparser.Elapsed().Round(time.Microsecond))
 	}
+	i.ClearInterrupt() // one made when no code was running
 	tRun := time.Now()
 	err = i.Run()
 	i.Stats.RunTime += time.Since(tRun)
@@ -230,6 +229,9 @@ func (i *Interp) evalCompiled(name string, compile func() error) (res reflect.Va
 	// already logged it; exit non-zero like Go, which crashes on such a panic.
 	if errors.Is(err, vm.ErrGoroutineFault) || (err == nil && i.PendingGoroutineFault() != nil) {
 		err = &ExitError{Code: 2}
+	}
+	if !i.UnitValue() { // a statement that has no value, such as if or for
+		return res, err
 	}
 	return i.Top().Reflect(), err
 }

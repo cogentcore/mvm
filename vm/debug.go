@@ -2,6 +2,7 @@ package vm
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -236,6 +237,13 @@ func FormatPanic(r any) (string, bool) {
 // Error renders the verbose layout (header + snippet + mvm stack) using the
 // DebugInfo captured at panic time. Falls back to "panic: <raw>" if no
 // DebugInfo was captured.
+// Unwrap returns the value of the panic if it is an error, so that
+// errors.Is and errors.As find it.
+func (e *PanicError) Unwrap() error {
+	err, _ := e.Raw.(error)
+	return err
+}
+
 func (e *PanicError) Error() string {
 	di := e.DI
 	var b strings.Builder
@@ -400,12 +408,12 @@ func (m *Machine) walkSegment(mem []Value, fp, ip int, yield func(StackFrame) bo
 			return
 		}
 		retIPInfo := mem[fp-2].num
-		retIP := int(int32(retIPInfo))
+		retIP := retIPOf(retIPInfo)
 		pc = retIP - 1
 		if fp-1 < 0 || fp-1 >= len(mem) {
 			return
 		}
-		fp = int(mem[fp-1].num &^ (1 << 63))
+		fp = fpOf(mem[fp-1].num)
 	}
 	// Synthetic outermost frame for the top-level entry sequence (only
 	// when it carries a real source position; CallFunc-synthesized Call
@@ -445,8 +453,8 @@ func (m *Machine) DumpCallStack(w io.Writer, di *DebugInfo) {
 			break
 		}
 		retIPInfo := mem[fp-2].num
-		nret := int((retIPInfo >> 32) & 0xFFFF)
-		narg := int(retIPInfo >> 48)
+		nret := retNret(retIPInfo)
+		narg := retFrameBase(retIPInfo)
 
 		DumpFrame(w, mem, m.code, fp, sp, narg, nret, di)
 
@@ -456,7 +464,7 @@ func (m *Machine) DumpCallStack(w io.Writer, di *DebugInfo) {
 			break
 		}
 		fpVal := mem[fp-1].num
-		fp = int(fpVal &^ (1 << 63)) // mask off envSavedFlag
+		fp = fpOf(fpVal) // mask off envSavedFlag
 	}
 
 	// Print globals with names if available.
@@ -513,7 +521,7 @@ func printSlot(w io.Writer, addr int, role string, v Value, symName, marker stri
 		valStr = formatValue(v)
 	case v.num != 0:
 		typStr = "raw"
-		valStr = strconv.FormatUint(v.num, 10)
+		valStr = strconv.FormatUint(wordUint(v.num), 10)
 	default:
 		typStr = "zero"
 		valStr = "0"
@@ -544,10 +552,58 @@ func formatValue(v Value) string {
 // machines: whichever reaches a safepoint first services it.
 var dumpRequested atomic.Bool
 
+// attention is the number of pending requests that a machine must service at
+// a safepoint: a state dump, and the interrupts of machines (see
+// Machine.Interrupt). The safepoints check it with a single load.
+var attention atomic.Int32
+
 // RequestStateDump asks the running VM to dump its execution state at the next
 // safepoint. Safe from a signal handler or other goroutine; the dump runs on the
 // VM goroutine. Fires only while some machine is executing interpreted code.
-func RequestStateDump() { dumpRequested.Store(true) }
+func RequestStateDump() {
+	if dumpRequested.CompareAndSwap(false, true) {
+		attention.Add(1)
+	}
+}
+
+// ErrInterrupted is the value of the panic that stops the code that a
+// machine runs when it is interrupted (see Machine.Interrupt).
+var ErrInterrupted = errors.New("interrupted")
+
+// Interrupt asks the machine, and the machines of the goroutines that its
+// code started, to stop running the code, by a panic with [ErrInterrupted]
+// at the next safepoint: a loop back-edge or a call. It is safe to call
+// from a signal handler or another goroutine, as for Ctrl-C. A native call
+// that blocks is not interrupted until it returns.
+func (m *Machine) Interrupt() {
+	if m.interrupt != nil && m.interrupt.CompareAndSwap(false, true) {
+		attention.Add(1)
+	}
+}
+
+// ClearInterrupt clears a request to interrupt the machine that is not
+// serviced, as one made when no code was running.
+func (m *Machine) ClearInterrupt() {
+	if m.interrupt != nil && m.interrupt.CompareAndSwap(true, false) {
+		attention.Add(-1)
+	}
+}
+
+// attend services the requests of attention at a safepoint: a state dump,
+// and an interrupt of the machine, which it raises as a panic, returning
+// true. Out of line so that the safepoints stay a load and a branch.
+func (m *Machine) attend(ip, fp int, mem []Value) bool {
+	if dumpRequested.Load() {
+		m.handleDumpReq(ip, fp, mem)
+	}
+	if m.interrupt != nil && m.interrupt.CompareAndSwap(true, false) {
+		attention.Add(-1)
+		m.panicking = true
+		m.panicVal = Value{ref: reflect.ValueOf(ErrInterrupted)}
+		return true
+	}
+	return false
+}
 
 // safepointHook, if non-nil, drains OS interrupts (Ctrl-C) on the call opcodes.
 // mvm test uses it instead of a parked watcher goroutine, which would otherwise
@@ -567,19 +623,21 @@ func SetSafepointHook(f func()) { safepointHook = f }
 // drains a pending interrupt (throttled by ctr) and services a state-dump
 // request. Out of line so the call cases stay small and the loop back-edge is
 // untouched.
-func (m *Machine) callSafepoint(ip, fp int, mem []Value, ctr *uint) {
-	if *ctr++; *ctr&safepointPollMask == 0 {
+func (m *Machine) callSafepoint(ip, fp int, mem []Value, ctr uint) uint {
+	if ctr++; ctr&safepointPollMask == 0 {
 		safepointHook()
 		if dumpRequested.Load() {
 			m.handleDumpReq(ip, fp, mem)
 		}
 	}
+	return ctr
 }
 
 // handleDumpReq services a request; the CAS lets exactly one machine dump. Out of
 // line so the safepoint check stays a cheap load+branch.
 func (m *Machine) handleDumpReq(ip, fp int, mem []Value) {
 	if dumpRequested.CompareAndSwap(true, false) {
+		attention.Add(-1)
 		m.dumpState(ip, fp, mem)
 	}
 }

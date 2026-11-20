@@ -12,10 +12,9 @@ import (
 // native callee mutating through it writes to a detached copy (zerolog's
 // hook.Run(e) regression: e.Str appended to a clone's buf).
 func TestDeepUnboxIfaceInPlace(t *testing.T) {
-	type holder struct {
-		V any
-	}
-	h := &holder{V: Iface{Typ: &mtype.Type{Rtype: reflect.TypeFor[int]()}, Val: ValueOf(42)}}
+	// The holder is unnamed: a named type unknown to the machine is native,
+	// which the walk does not enter.
+	h := &struct{ V any }{V: Iface{Typ: &mtype.Type{Rtype: reflect.TypeFor[int]()}, Val: ValueOf(42)}}
 
 	m := &Machine{}
 	w, changed := m.deepUnboxIface(reflect.ValueOf(h), 0, 0, nil)
@@ -120,5 +119,31 @@ func TestDeepUnboxIfaceCycle(t *testing.T) {
 	case <-done:
 	case <-time.After(10 * time.Second):
 		t.Fatal("deepUnboxIface did not terminate on a cyclic graph")
+	}
+}
+
+// nativeUnboxHolder is a named type that the machine does not know, as the
+// types of native packages.
+type nativeUnboxHolder struct {
+	V    any
+	Next *nativeUnboxHolder
+}
+
+// The walk does not enter a value of a native named type, whose memory only
+// holds unboxed values, so it does not walk all that the value reaches.
+func TestDeepUnboxIfaceSkipsNative(t *testing.T) {
+	box := Iface{Typ: &mtype.Type{Rtype: reflect.TypeFor[int]()}, Val: ValueOf(1)}
+	h := &nativeUnboxHolder{V: box}
+	m := &Machine{}
+	m.deepUnboxIface(reflect.ValueOf(h), 0, 0, nil)
+	if _, ok := h.V.(Iface); !ok {
+		t.Fatal("native holder entered")
+	}
+
+	// A fresh []any argument is walked: interpreted code makes it.
+	s := []any{box}
+	m.deepUnboxIface(reflect.ValueOf(s), 0, 0, nil)
+	if _, ok := s[0].(int); !ok {
+		t.Fatalf("slice element not unboxed: %#v", s[0])
 	}
 }
