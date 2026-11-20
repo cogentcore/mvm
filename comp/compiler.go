@@ -2064,41 +2064,24 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				if typ.IsVariadic() {
 					nFixed = nIn - 1
 				}
-				for k := 0; k < narg && k < nIn; k++ {
-					argSym := stack[len(stack)-narg+k]
-					if argSym.Type == nil {
-						if k < nFixed || (spread && k == nFixed) {
-							paramTyp := typ.ParamType(k)
-							c.emitNilCoerce(t, argSym, paramTyp, narg-1-k)
-							if !paramTyp.IsInterface() {
-								c.emitConstConvert(t, argSym, paramTyp, narg-1-k)
-							}
-						}
-						continue
-					}
-					if argSym.Type.IsInterface() {
-						continue
-					}
-					ifaceTyp := typ.ParamType(k)
-					depth := narg - 1 - k
-					c.emitIfaceWrapAt(t, ifaceTyp, argSym.Type, depth)
-					if !ifaceTyp.IsInterface() {
-						c.emitConstConvert(t, argSym, ifaceTyp, depth)
-					}
-				}
-				// Type switches on variadic slice elements require Iface wrapping at the call site.
-				// For spread calls (f(s...)), the slice is pre-built; skip per-element wrapping.
+				// The arguments packed into the variadic slice (not for
+				// spread calls, whose slice is pre-built) are coerced to its
+				// element type.
+				var elemTyp *mtype.Type
 				if typ.IsVariadic() && !spread {
-					elemTyp := typ.ParamType(nIn - 1).Elem()
-					if elemTyp.Kind() == reflect.Interface {
-						for k := nFixed; k < narg; k++ {
-							argSym := stack[len(stack)-narg+k]
-							if argSym.Type == nil || argSym.Type.IsInterface() {
-								continue
-							}
-							c.emitIfaceWrapAt(t, elemTyp, argSym.Type, narg-1-k)
-						}
+					elemTyp = typ.ParamType(nFixed).Elem()
+				}
+				for k := 0; k < narg; k++ {
+					var paramTyp *mtype.Type
+					switch {
+					case k < nFixed || (spread && k == nFixed):
+						paramTyp = typ.ParamType(k)
+					case elemTyp != nil:
+						paramTyp = elemTyp
+					default:
+						continue
 					}
+					c.emitArgCoerce(t, stack[len(stack)-narg+k], paramTyp, narg-1-k)
 				}
 				// Pop function and input arg symbols, push return value symbols.
 				pop()
@@ -2160,41 +2143,23 @@ func (c *Compiler) generate(tokens goparser.Tokens) (err error) {
 				if rtyp.IsVariadic() {
 					nFixed = nIn - 1
 				}
-				for k := 0; k < narg && k < nIn; k++ {
-					argSym := stack[len(stack)-narg+k]
-					if argSym.Type == nil {
-						if k < nFixed || (spread && k == nFixed) {
-							paramTyp := &mtype.Type{Rtype: rtyp.In(k)}
-							c.emitNilCoerce(t, argSym, paramTyp, narg-1-k)
-							if !paramTyp.IsInterface() {
-								c.emitConstConvert(t, argSym, paramTyp, narg-1-k)
-							}
-						}
-						continue
-					}
-					if argSym.Type.IsInterface() {
-						continue
-					}
-					ifaceTyp := &mtype.Type{Rtype: rtyp.In(k)}
-					depth := narg - 1 - k
-					c.emitIfaceWrapAt(t, ifaceTyp, argSym.Type, depth)
-					if !ifaceTyp.IsInterface() {
-						c.emitConstConvert(t, argSym, ifaceTyp, depth)
-					}
-				}
+				// As for declared funcs: the arguments packed into the
+				// variadic slice are coerced to its element type.
+				var elemTyp *mtype.Type
 				if rtyp.IsVariadic() && !spread {
-					nFixed := nIn - 1
-					elemType := rtyp.In(nFixed).Elem()
-					if elemType.Kind() == reflect.Interface {
-						elemTyp := &mtype.Type{Rtype: elemType}
-						for k := nFixed; k < narg; k++ {
-							argSym := stack[len(stack)-narg+k]
-							if argSym.Type == nil || argSym.Type.IsInterface() {
-								continue
-							}
-							c.emitIfaceWrapAt(t, elemTyp, argSym.Type, narg-1-k)
-						}
+					elemTyp = &mtype.Type{Rtype: rtyp.In(nFixed).Elem()}
+				}
+				for k := 0; k < narg; k++ {
+					var paramTyp *mtype.Type
+					switch {
+					case k < nFixed || (spread && k == nFixed):
+						paramTyp = &mtype.Type{Rtype: rtyp.In(k)}
+					case elemTyp != nil:
+						paramTyp = elemTyp
+					default:
+						continue
 					}
+					c.emitArgCoerce(t, stack[len(stack)-narg+k], paramTyp, narg-1-k)
 				}
 			}
 			// Pop function and input arg symbols, push return value symbols.
@@ -3961,6 +3926,23 @@ func (c *Compiler) emitConstConvert(t goparser.Token, s *symbol.Symbol, typ *mty
 	c.emitNumConvert(t, typ, symbol.Vtype(s), depth)
 }
 
+// emitArgCoerce coerces the call argument argSym, at the given stack depth,
+// to its parameter type paramTyp: an untyped nil to a typed nil, a concrete
+// value to an Iface for an interface parameter, and a constant (untyped or
+// of another numeric type) to a numeric parameter type.
+func (c *Compiler) emitArgCoerce(t goparser.Token, argSym *symbol.Symbol, paramTyp *mtype.Type, depth int) {
+	if argSym.Type == nil {
+		c.emitNilCoerce(t, argSym, paramTyp, depth)
+	} else if argSym.Type.IsInterface() {
+		return
+	} else {
+		c.emitIfaceWrapAt(t, paramTyp, argSym.Type, depth)
+	}
+	if !paramTyp.IsInterface() {
+		c.emitConstConvert(t, argSym, paramTyp, depth)
+	}
+}
+
 // emitNilCoerce coerces an untyped nil argument (Type == nil) to a typed zero
 // value of a concrete nilable parameter type (slice/map/ptr/chan/func), so that
 // len/range/index inside the callee see a typed nil (e.g. a nil []int) rather
@@ -5151,29 +5133,36 @@ func makeElemType(container *mtype.Type) *mtype.Type {
 // trailing args (as the Call path does), returning the new arg count and whether
 // the last arg is now a slice. Only VM funcs are packed; native-direct funcs and
 // builtins keep raw spread args, and a spread call already supplies the slice.
+// The args of VM funcs are coerced to their parameter types as by Call.
 func (c *Compiler) emitVariadicPack(t goparser.Token, s *symbol.Symbol, narg int, spread bool, stack []*symbol.Symbol) (int, bool) {
 	typ := s.Type
-	if typ == nil || !typ.IsVariadic() {
+	switch s.Kind {
+	case symbol.Func, symbol.LocalVar, symbol.Var:
+	default:
+		return narg, spread && typ != nil && typ.IsVariadic()
+	}
+	if typ == nil || typ.Kind() != reflect.Func {
+		return narg, false
+	}
+	nIn := typ.NumIn()
+	nFixed := nIn
+	if typ.IsVariadic() {
+		nFixed = nIn - 1
+	}
+	for k := 0; k < narg && k < nIn; k++ {
+		if k < nFixed || (spread && k == nFixed) {
+			c.emitArgCoerce(t, stack[len(stack)-narg+k], typ.ParamType(k), narg-1-k)
+		}
+	}
+	if !typ.IsVariadic() {
 		return narg, false
 	}
 	if spread {
 		return narg, true
 	}
-	switch s.Kind {
-	case symbol.Func, symbol.LocalVar, symbol.Var:
-	default:
-		return narg, false
-	}
-	nFixed := typ.NumIn() - 1
 	elemTyp := typ.ParamType(nFixed).Elem()
-	if elemTyp.Kind() == reflect.Interface {
-		for k := nFixed; k < narg; k++ {
-			argSym := stack[len(stack)-narg+k]
-			if argSym.Type == nil || argSym.Type.IsInterface() {
-				continue
-			}
-			c.emitIfaceWrapAt(t, elemTyp, argSym.Type, narg-1-k)
-		}
+	for k := nFixed; k < narg; k++ {
+		c.emitArgCoerce(t, stack[len(stack)-narg+k], elemTyp, narg-1-k)
 	}
 	c.emit(t, vm.MkSlice, narg-nFixed, c.typeSym(elemTyp).Index)
 	return nFixed + 1, true
