@@ -3931,11 +3931,12 @@ func (c *Compiler) emitConstConvert(t goparser.Token, s *symbol.Symbol, typ *mty
 // value to an Iface for an interface parameter, and a constant (untyped or
 // of another numeric type) to a numeric parameter type.
 func (c *Compiler) emitArgCoerce(t goparser.Token, argSym *symbol.Symbol, paramTyp *mtype.Type, depth int) {
-	if argSym.Type == nil {
+	switch {
+	case argSym.Type == nil:
 		c.emitNilCoerce(t, argSym, paramTyp, depth)
-	} else if argSym.Type.IsInterface() {
+	case argSym.Type.IsInterface():
 		return
-	} else {
+	default:
 		c.emitIfaceWrapAt(t, paramTyp, argSym.Type, depth)
 	}
 	if !paramTyp.IsInterface() {
