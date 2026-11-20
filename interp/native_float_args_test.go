@@ -40,7 +40,7 @@ func TestNativeFloatArgs(t *testing.T) {
 		{`func f(v ...float64) { fmt.Println(v) }; func main() { defer f(6, 7) }`, "[6 7]\n"},
 		{`func f(x float64, v ...float64) { fmt.Println(x, v) }; func main() { defer f(5, 6, 7) }`, "5 [6 7]\n"},
 		{`func f(v ...float64) { fmt.Println(v) }; func main() { d := make(chan bool); go func() { f(8, 9); d <- true }(); <-d }`, "[8 9]\n"},
-		{`func f(x float64) { fmt.Println(x) }; func main() { defer f(5); go f(4) }`, "5\n"},
+		{`func f(x float64) { fmt.Println(x); d <- true }; var d = make(chan bool, 2); func main() { defer f(5); go f(4); <-d }`, "4\n5\n"},
 		{`func main() { defer nf.Mixed(1, 2); defer fmt.Println(nf.One(3)) }`, "3\n"},
 		{`func f(v ...float64) { fmt.Println(v); d <- true }; var d = make(chan bool); func main() { go f(8, 9); <-d }`, "[8 9]\n"},
 	}
