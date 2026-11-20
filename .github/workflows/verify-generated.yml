@@ -46,9 +46,12 @@ jobs:
           MVMSTD_SRC: ${{ github.workspace }}/std-src
         run: make generate
 
+      # stdlib/src.zip is excluded: the committed zip (upstream 0259973) was
+      # built from a mvm-sh/std change (internal/godebug Setting.Name) that is
+      # not on any published std commit, so no std checkout reproduces it.
       - name: Verify no drift
         run: |
-          if ! git diff --exit-code; then
+          if ! git diff --exit-code -- . ':(exclude)stdlib/src.zip'; then
             echo "::error::Generated files are out of date. Run 'make generate' locally and commit the result."
             exit 1
           fi
